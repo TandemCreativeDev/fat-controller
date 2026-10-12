@@ -13,7 +13,6 @@ const input: AnalysisPackInput = {
   asOf: new Date("2026-10-12T08:30:00Z"),
   period: { from: "2025-10-01", to: "2026-10-31" },
   fyStart: "2026-09-01",
-  ctRate: 0.2,
   groups: { sales: ["Sales"], people: ["Salaries"], other: ["Software"] },
   pnl: [
     {
@@ -23,7 +22,6 @@ const input: AnalysisPackInput = {
       otherCosts: 100,
       profit: 500,
       margin: 0.5,
-      ctSetAside: 200,
       salesAvg3: 900,
       profitAvg3: null,
     },
@@ -73,16 +71,16 @@ describe("buildAnalysisPack", () => {
     expect(md).toContain("**Main measure:** Sales invoiced, by invoice date.")
     expect(md).toContain("Sales, Invoiced and cost figures **exclude VAT**")
     expect(md).not.toContain("includes VAT")
-    expect(md).toContain("**Corporation Tax set-aside:** 20.0% of Sales")
+    expect(md).not.toMatch(/Corporation Tax|CT set-aside/)
     expect(md).toContain("- **People costs:** Salaries.")
   })
 
   it("writes the P&L as a right-aligned table with units in the headers", () => {
     expect(md).toContain(
-      "| Month (YYYY-MM) | Sales (GBP, ex VAT) | People costs (GBP) | Other costs (GBP) | Profit (GBP) | Margin (%) | CT set-aside (GBP) | Sales 3-month avg (GBP) | Profit 3-month avg (GBP) |"
+      "| Month (YYYY-MM) | Sales (GBP, ex VAT) | People costs (GBP) | Other costs (GBP) | Profit (GBP) | Margin (%) | Sales 3-month avg (GBP) | Profit 3-month avg (GBP) |"
     )
     expect(md).toContain(
-      "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n| 2026-09 | 1000.00 | 400.00 | 100.00 | 500.00 | 50.0 | 200.00 | 900.00 |  |"
+      "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n| 2026-09 | 1000.00 | 400.00 | 100.00 | 500.00 | 50.0 | 900.00 |  |"
     )
   })
 

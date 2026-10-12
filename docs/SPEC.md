@@ -10,9 +10,8 @@ fat-controller is Tandem's internal finance dashboard. It reads Tandem's own Xer
 
 - See cash position, money owed to us and money we owe, without logging into Xero.
 - Track revenue and profit by client and project.
-- Show the Corporation Tax (CT) set-aside (20% of revenue) and the remaining distributable pot.
 - Show a per-director take-home figure from the dividend distribution method.
-- Flag VAT, CT and other deadlines before they arrive.
+- Flag VAT and other deadlines before they arrive.
 
 **Non-goals (v1)**
 
@@ -63,14 +62,13 @@ The home screen is a **monthly P&L** (profit and loss): for each month, what cam
 
 One row per month, last 12 months plus the current month to date, with a bar chart of sales against people costs above it.
 
-| Column       | Meaning                                                                           |
-| ------------ | --------------------------------------------------------------------------------- |
-| Sales        | Invoiced revenue, excluding VAT                                                   |
+| Column       | Meaning                                                              |
+| ------------ | -------------------------------------------------------------------- |
+| Sales        | Invoiced revenue, excluding VAT                                      |
 | People costs | Salaries, employer National Insurance, pension, and contractor bills |
-| Other costs  | Hosting, software, accountancy and everything else                                |
-| Profit       | Sales minus all costs                                                             |
-| Margin       | Profit as a % of sales                                                            |
-| CT set-aside | 20% of sales                                                                      |
+| Other costs  | Hosting, software, accountancy and everything else                   |
+| Profit       | Sales minus all costs                                                |
+| Margin       | Profit as a % of sales                                               |
 
 **Source:** our own synced transactions, not Xero's Profit and Loss report: sales invoices, bills, credit notes, bank spend and receive lines, and posted manual journals, each line by account (`v_ledger_line`). Each Xero account is mapped once to Sales, People costs or Other costs in an `account_group` settings table, so the grouping matches how we think about the business, not Xero's chart of accounts. On Tandem's data this reproduces Xero's P&L exactly per account per month (checked 2026-10-12); payroll here reaches the ledger as bank transactions. If payroll ever posts through Xero Payroll journals (not visible on the Starter plan), the gap would show as a difference from Xero's report.
 
@@ -80,12 +78,12 @@ One row per month, last 12 months plus the current month to date, with a bar cha
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Clients**         | Amount invoiced and paid per client, per month and per financial year; share of total revenue; outstanding balance and average days to pay |
 | **Cash**            | Bank balance over time; money owed to us and money we owe                                                                                  |
-| **Tax & take-home** | CT set-aside, distributable remainder, per-director take-home to date, VAT estimate for the open quarter                                   |
+| **Tax & take-home** | Per-director take-home to date, VAT estimate for the open quarter                                                                          |
 | **Costs**           | People and other costs by account and supplier, with monthly run rate of subscriptions                                                     |
 
-**Take-home rule (from Tandem's current process):** set aside 20% of revenue for Corporation Tax, then run the dividend distribution method on the remainder. The dashboard shows the per-director figure only. The 20% rate and the method's parameters live in a settings table so they can change without a deploy.
+**Take-home rule:** run the dividend distribution method and show the per-director figure only. The method's parameters live in a settings table so they can change without a deploy. The app shows no Corporation Tax figures (see Decisions).
 
-**Deadlines panel:** VAT quarter end and filing date, Corporation Tax payment date, confirmation statement, year-end. Dates are entered once in settings; the app counts down and flags anything inside 30 days.
+**Deadlines panel:** VAT quarter end and filing date, confirmation statement, year-end. Dates are entered once in settings; the app counts down and flags anything inside 30 days.
 
 ## Architecture
 
@@ -126,8 +124,8 @@ Three layers in Neon Postgres, managed with Drizzle ORM migrations (Docker Postg
 | `xero_bank_transaction` | Raw   | id, type (spend or receive), date, contact_id, total, account_code                                                         |
 | `xero_report_snapshot`  | Raw   | report name, period, fetched_at, `raw jsonb`                                                                               |
 | `account_group`         | App   | maps each Xero account to Sales, People costs or Other costs                                                               |
-| `project_map`           | App   | maps a Xero contact or tracking option to a Tandem project |
-| `settings`              | App   | CT set-aside rate (20%), dividend method parameters, financial year start, deadline dates                                  |
+| `project_map`           | App   | maps a Xero contact or tracking option to a Tandem project                                                                 |
+| `settings`              | App   | Dividend method parameters, financial year start, deadline dates                                                           |
 
 **Views:** `v_pnl_monthly`, `v_cash_daily`, `v_revenue_by_client_month`, `v_aged_debtors`, `v_take_home_ytd`, `v_vat_open_quarter`. Dashboards query views only, never raw tables, so a calculation lives in one place.
 
@@ -188,15 +186,15 @@ drizzle/          generated migrations (never edit once pushed)
 
 **Environment variables**
 
-| Name | Where | Purpose |
-| --- | --- | --- |
-| `DATABASE_URL` | all | pooled connection (Neon pooler in prod, Docker locally) |
-| `DATABASE_URL_UNPOOLED` | build, drizzle-kit | direct connection for migrations |
-| `BETTER_AUTH_SECRET` | all | session signing (sensitive) |
-| `BETTER_AUTH_URL` | production, local | canonical origin; previews derive it from `VERCEL_URL` |
-| `DIRECTOR_ACCOUNTS` | seed | `Name <email>, Name <email>` |
-| `DIRECTOR_INITIAL_PASSWORD` | seed | first password for new director accounts (sensitive) |
-| `XERO_CLIENT_ID`, `XERO_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `CRON_SECRET` | M1 | Xero OAuth, refresh-token encryption, cron auth |
+| Name                                                                          | Where              | Purpose                                                 |
+| ----------------------------------------------------------------------------- | ------------------ | ------------------------------------------------------- |
+| `DATABASE_URL`                                                                | all                | pooled connection (Neon pooler in prod, Docker locally) |
+| `DATABASE_URL_UNPOOLED`                                                       | build, drizzle-kit | direct connection for migrations                        |
+| `BETTER_AUTH_SECRET`                                                          | all                | session signing (sensitive)                             |
+| `BETTER_AUTH_URL`                                                             | production, local  | canonical origin; previews derive it from `VERCEL_URL`  |
+| `DIRECTOR_ACCOUNTS`                                                           | seed               | `Name <email>, Name <email>`                            |
+| `DIRECTOR_INITIAL_PASSWORD`                                                   | seed               | first password for new director accounts (sensitive)    |
+| `XERO_CLIENT_ID`, `XERO_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `CRON_SECRET` | M1                 | Xero OAuth, refresh-token encryption, cron auth         |
 
 **Auth flow:** `proxy.ts` redirects requests without a session cookie to `/sign-in`; every page and server action calls `requireDirector()`, which validates the session against the database. Sign-in and password change run client-side through `/api/auth` so Better Auth's database-backed rate limiter applies (5 per minute).
 
@@ -207,7 +205,7 @@ Shadcn base-nova defaults on the neutral palette, Geist Sans and Geist Mono, lig
 ## Quality bar
 
 - `pnpm gates` (typecheck, lint, Vitest, build) passes before every push.
-- Money logic (P&L grouping, CT set-aside, take-home, VAT) is pure and unit-tested against hand-computed fixtures before any UI uses it.
+- Money logic (P&L grouping, take-home, VAT) is pure and unit-tested against hand-computed fixtures before any UI uses it.
 - No figure on screen is computed in a component; it comes from a view or a tested function.
 
 ## Decisions
@@ -223,13 +221,13 @@ Shadcn base-nova defaults on the neutral palette, Geist Sans and Geist Mono, lig
 - **2026-10-12** The P&L is built from synced transactions (`v_ledger_line`), not Xero's P&L report (director's call). The report is no longer fetched; `xero_pnl_line` and `xero_report_snapshot` stay until a later migration drops them.
 - **2026-10-12** Directors' Remuneration counts as People costs.
 - **2026-10-12** The main measure everywhere is Sales invoiced, by invoice date: Tandem invoices as soon as work is done, so invoice date measures work delivered. Cash received is secondary and never sits beside Sales month by month; no "Cash in" column on the P&L. Rolling 3-month averages of Sales and Profit use complete months only. No billable-days tracking.
+- **2026-10-12** No Corporation Tax anywhere in the app: no set-aside figure, rate setting or CT deadline (director's call). `v_pnl_monthly.ct_set_aside` is no longer read and is dropped in a later migration; the stored `ct_set_aside_rate` setting is ignored.
 
 ## Open questions
 
 - [ ] How are projects tagged in Xero today: by contact, by tracking category, or not at all?
 - [ ] Is payroll run in Xero, or somewhere else that posts into it?
 - [ ] Which parameters does the dividend distribution method need (salary level, split, timing) so it can live in `settings`?
-- [ ] Should the 20% set-aside apply to revenue including or excluding VAT?
 - [ ] Is a daily sync enough, or is hourly worth Vercel Pro ($20 per member a month)?
 - [ ] Does the accountant want read access, or a monthly export instead?
 - [ ] Target date for v1?

@@ -4,7 +4,6 @@ import { useActionState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import type { Settings } from "@/lib/settings"
 import { saveFinanceSettings } from "./actions"
 
@@ -28,21 +27,6 @@ export function FinanceForm({ settings }: { settings: Settings }) {
 
   return (
     <form action={action} className="flex max-w-md flex-col gap-4">
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="ctRatePercent">
-          Corporation Tax set-aside (% of sales)
-        </Label>
-        <Input
-          id="ctRatePercent"
-          name="ctRatePercent"
-          type="number"
-          min={0}
-          max={100}
-          step={0.01}
-          defaultValue={+(settings.ct_set_aside_rate * 100).toFixed(2)}
-          required
-        />
-      </div>
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-2 text-sm font-medium">
           Financial year starts

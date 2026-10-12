@@ -6,13 +6,6 @@ import { z } from "zod"
  * Dividend method parameters and deadline dates are added here when M3/M4 need them.
  */
 export const settingDefinitions = {
-  ct_set_aside_rate: {
-    label: "Corporation Tax set-aside rate",
-    description:
-      "Share of sales set aside for Corporation Tax before distribution.",
-    schema: z.number().min(0).max(1),
-    default: 0.2,
-  },
   financial_year_start: {
     label: "Financial year start",
     description: "Day and month the company's financial year begins.",

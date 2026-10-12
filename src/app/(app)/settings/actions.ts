@@ -10,7 +10,6 @@ import { requireDirector } from "@/lib/session"
 export type FormState = { ok: boolean; message: string } | null
 
 const financeForm = z.object({
-  ctRatePercent: z.coerce.number().min(0).max(100),
   fyMonth: z.coerce.number().int(),
   fyDay: z.coerce.number().int(),
 })
@@ -24,7 +23,6 @@ export async function saveFinanceSettings(
   if (!form.success)
     return { ok: false, message: "Check the values and try again." }
 
-  const rate = Math.round(form.data.ctRatePercent * 100) / 10_000
   const fy = settingDefinitions.financial_year_start.schema.safeParse({
     month: form.data.fyMonth,
     day: form.data.fyDay,
@@ -35,7 +33,6 @@ export async function saveFinanceSettings(
       message: "That financial year start date doesn't exist.",
     }
 
-  await saveSetting("ct_set_aside_rate", rate, director.id)
   await saveSetting("financial_year_start", fy.data, director.id)
   revalidatePath("/", "layout")
   return { ok: true, message: "Saved." }

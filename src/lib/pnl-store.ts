@@ -13,7 +13,6 @@ export type PnlMonth = {
   otherCosts: number
   profit: number
   margin: number | null
-  ctSetAside: number
   /** Rolling 3-month averages over complete months; null for the current month. */
   salesAvg3: number | null
   profitAvg3: number | null
@@ -34,7 +33,6 @@ export async function getPnlMonthly(): Promise<PnlMonth[]> {
     otherCosts: Number(r.otherCosts),
     profit: Number(r.profit),
     margin: r.margin === null ? null : Number(r.margin),
-    ctSetAside: Number(r.ctSetAside),
     asOf: r.asOf,
   }))
   return withRolling3(months, current.start)

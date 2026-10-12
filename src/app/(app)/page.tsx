@@ -77,9 +77,8 @@ export default async function HomePage() {
       peopleCosts: t.peopleCosts + m.peopleCosts,
       otherCosts: t.otherCosts + m.otherCosts,
       profit: t.profit + m.profit,
-      ctSetAside: t.ctSetAside + m.ctSetAside,
     }),
-    { sales: 0, peopleCosts: 0, otherCosts: 0, profit: 0, ctSetAside: 0 }
+    { sales: 0, peopleCosts: 0, otherCosts: 0, profit: 0 }
   )
   const { kept, other } = topWithOther(costs, 5)
   const costSlices = [
@@ -129,10 +128,6 @@ export default async function HomePage() {
           value={formatGbp(totals.profit)}
           sub={`${formatPercent(totals.sales ? totals.profit / totals.sales : null)} margin · 3-month avg ${avg3(lastFull?.profitAvg3 ?? null)}`}
           accent
-        />
-        <StatTile
-          label="CT set-aside · last 12 months"
-          value={formatGbp(totals.ctSetAside)}
         />
         <StatTile
           label={`${short(current.month)} to date`}
@@ -220,7 +215,6 @@ export default async function HomePage() {
                 <TableHead className="text-right">Margin</TableHead>
                 <TableHead className="text-right">Sales 3-mo avg</TableHead>
                 <TableHead className="text-right">Profit 3-mo avg</TableHead>
-                <TableHead className="text-right">CT set-aside</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -253,9 +247,6 @@ export default async function HomePage() {
                   <TableCell className="text-right">
                     {m.profitAvg3 === null ? "–" : money(m.profitAvg3)}
                   </TableCell>
-                  <TableCell className="text-right">
-                    {money(m.ctSetAside)}
-                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -281,9 +272,6 @@ export default async function HomePage() {
                 </TableCell>
                 <TableCell />
                 <TableCell />
-                <TableCell className="text-right">
-                  {money(totals.ctSetAside)}
-                </TableCell>
               </TableRow>
             </TableFooter>
           </Table>

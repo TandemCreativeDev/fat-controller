@@ -37,7 +37,7 @@ export default async function SettingsPage({
         <CardHeader>
           <CardTitle>Finance</CardTitle>
           <CardDescription>
-            Used by the CT set-aside and take-home figures.
+            Used by the financial-year and take-home figures.
           </CardDescription>
         </CardHeader>
         <CardContent>

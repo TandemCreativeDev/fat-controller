@@ -13,7 +13,6 @@ import type { AnalysisPackInput } from "@/lib/analysis-pack"
 import { lastMonths, londonToday } from "@/lib/pnl"
 import { getClientSummary } from "@/lib/clients-store"
 import { getPnlMonthly } from "@/lib/pnl-store"
-import { getSettings } from "@/lib/settings-store"
 
 const GROUP_LABEL = { people: "People costs", other: "Other costs" } as const
 
@@ -30,7 +29,6 @@ export async function getAnalysisPackInput(
     .from(xeroOrganisation)
     .limit(1)
   const [fy] = await db.select().from(vCurrentFy)
-  const settings = await getSettings()
   const pnl = await getPnlMonthly()
   const clientsFy = (await getClientSummary()).filter(
     (c) => c.invoicesFy > 0 || c.invoicedFy !== 0
@@ -119,7 +117,6 @@ export async function getAnalysisPackInput(
     asOf: pnl[0]?.asOf ?? null,
     period: { from, to },
     fyStart: fy?.fyStart ?? from,
-    ctRate: settings.ct_set_aside_rate,
     groups: {
       sales: names("sales"),
       people: names("people"),

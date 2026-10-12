@@ -10,7 +10,6 @@ export type AnalysisPackInput = {
   asOf: Date | null
   period: { from: string; to: string }
   fyStart: string
-  ctRate: number
   groups: { sales: string[]; people: string[]; other: string[] }
   pnl: {
     month: string
@@ -19,7 +18,6 @@ export type AnalysisPackInput = {
     otherCosts: number
     profit: number
     margin: number | null
-    ctSetAside: number
     salesAvg3: number | null
     profitAvg3: number | null
   }[]
@@ -117,7 +115,6 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
       `- **VAT:** Sales, Invoiced and cost figures **exclude VAT**. Cash received and Outstanding are the amounts clients actually paid or still owe.`,
       `- **Basis:** accruals by document date (invoice, bill or bank transaction date), built from Xero sales invoices, bills, credit notes, bank spend/receive transactions and manual journals. Bank transfers are excluded.`,
       `- **Financial year:** starts ${d.fyStart}. "Year to date" means since that date.`,
-      `- **Corporation Tax set-aside:** ${(d.ctRate * 100).toFixed(1)}% of Sales, a management rule for cash planning, not a tax computation.`,
       `- **Data as of:** ${date(d.asOf)}. Generated ${date(d.generatedAt)}.`,
       `- These are management figures from the company's own dashboard, not statutory accounts.`,
       "",
@@ -126,7 +123,7 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
       `- **Sales:** income accounts: ${d.groups.sales.join(", ") || "none"}.`,
       `- **People costs:** ${d.groups.people.join(", ") || "none"}. Includes directors' salary; excludes dividends, which are a distribution of profit, not a cost.`,
       `- **Other costs:** every other expense account: ${d.groups.other.join(", ") || "none"}.`,
-      `- **Profit:** Sales − People costs − Other costs (before Corporation Tax).`,
+      `- **Profit:** Sales − People costs − Other costs, before tax.`,
       `- **Margin (%):** Profit ÷ Sales × 100.`,
       `- **3-month average:** the mean of that month and the two before it, complete months only. Blank for the current month (unfinished) and where the period has no two complete months before it.`,
     ].join("\n")
@@ -142,7 +139,6 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
           "Other costs (GBP)",
           "Profit (GBP)",
           "Margin (%)",
-          "CT set-aside (GBP)",
           "Sales 3-month avg (GBP)",
           "Profit 3-month avg (GBP)",
         ],
@@ -153,7 +149,6 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
           gbp(m.otherCosts),
           gbp(m.profit),
           pct(m.margin),
-          gbp(m.ctSetAside),
           gbpOrBlank(m.salesAvg3),
           gbpOrBlank(m.profitAvg3),
         ])

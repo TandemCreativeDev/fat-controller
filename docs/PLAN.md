@@ -14,7 +14,7 @@
 - [x] Better Auth schema + rate_limit + settings tables; first migration
 - [x] Idempotent seed: directors from env, default settings
 - [x] Sign-in (no sign-up), proxy redirect, `requireDirector()`, sign out
-- [x] Settings page: CT rate, financial year start, change password
+- [x] Settings page: financial year start, change password
 - [x] `/api/health`; gates script; Vitest for settings and director parsing
 - [x] GitHub repo `TandemCreativeDev/fat-controller` (public), push
 - [x] Vercel project in `lhr1`, git connected, `vercel.json` build = migrate → seed → build
@@ -40,6 +40,7 @@
 
 - [x] `account_group` table with tested default rules + warning for uncounted accounts
 - [ ] Mapping UI to override an account's group
+- [ ] Drop `ct_set_aside` from `v_pnl_monthly` (unread since CT was removed; drop once that deploy is live)
 - [x] P&L engine: monthly report snapshots → grouped rows (pure, fixture-tested)
 - [x] `v_pnl_monthly`; home screen table + sales vs people chart; as-of time
 - [ ] Links from figures to the Xero records behind them
