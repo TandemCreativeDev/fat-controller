@@ -45,13 +45,17 @@ export async function GET(request: NextRequest) {
   const code = q.get("code")
   if (!code) return settings(request, { xero: "error", reason: "no-code" })
 
+  // Each step reports its own reason so a failure is diagnosable from the settings page.
+  let step = "token"
   try {
     const tokens = await exchangeCode(code)
+    step = "tenants"
     const tenants = await listTenants(tokens.access_token)
     if (tenants.length === 0)
       return settings(request, { xero: "error", reason: "no-organisation" })
     // One organisation per app (spec). If several were authorised, the first is used and named on the settings page.
     const tenant = tenants[0]
+    step = "save"
     await saveConnection({
       tenantId: tenant.tenantId,
       tenantName: tenant.tenantName ?? "Xero organisation",
@@ -60,10 +64,13 @@ export async function GET(request: NextRequest) {
     })
     return settings(request, { xero: "connected" })
   } catch (err) {
-    console.error(
-      "xero callback failed:",
-      err instanceof Error ? err.message : err
-    )
-    return settings(request, { xero: "error", reason: "exchange" })
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`xero callback failed at ${step}:`, message)
+    // Token errors carry Xero's OAuth error code (e.g. invalid_client), never a secret.
+    const detail = message.match(/failed: (\d+(?: [a-z_]+)?)/)?.[1] ?? ""
+    return settings(request, {
+      xero: "error",
+      reason: `${step}${detail ? ` ${detail}` : ""}`.slice(0, 80),
+    })
   }
 }
