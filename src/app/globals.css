@@ -134,7 +134,7 @@
     }
 }
 /*
- * Backdrop: static gradient glows, a masked grid and grain. All CSS, no blur
+ * Backdrop: static gradient glows and grain. All CSS, no blur
  * filters or animation, so it costs one paint.
  */
 @layer components {
@@ -149,16 +149,6 @@
       radial-gradient(44rem 34rem at 30% 110%, rgb(236 72 153 / 0.13), transparent 70%),
       radial-gradient(120% 80% at 50% -10%, #1a1440 0%, transparent 60%),
       var(--background);
-  }
-  .app-backdrop::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background-image:
-      linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px),
-      linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
-    background-size: 56px 56px;
-    mask-image: radial-gradient(ellipse 70% 55% at 50% 0%, #000 30%, transparent 100%);
   }
   .app-backdrop::after {
     content: "";
