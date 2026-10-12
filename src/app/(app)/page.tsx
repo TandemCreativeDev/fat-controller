@@ -1,5 +1,8 @@
 import Link from "next/link"
 
+import { MonthlyBars, ShareDonut, TrendLine } from "@/components/charts"
+import { PageHeader } from "@/components/page-header"
+import { StatRow, StatTile } from "@/components/stat-tile"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   Card,
@@ -18,11 +21,16 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { formatAsOf, formatGbp, formatMonth, formatPercent } from "@/lib/format"
-import { getPnlMonthly, getUngroupedPnlAccounts } from "@/lib/pnl-store"
+import {
+  getCostsByAccount,
+  getPnlMonthly,
+  getUngroupedPnlAccounts,
+} from "@/lib/pnl-store"
+import { topWithOther } from "@/lib/series"
 import { requireDirector } from "@/lib/session"
 import { cn } from "@/lib/utils"
-import { PnlChart } from "./pnl-chart"
 
+const short = (m: string) => formatMonth(m).replace(" 20", " '")
 const money = (n: number) => (
   <span className={cn("tabular-nums", n < 0 && "text-destructive")}>
     {formatGbp(n)}
@@ -31,23 +39,20 @@ const money = (n: number) => (
 
 export default async function HomePage() {
   await requireDirector()
-  const [months, ungrouped] = await Promise.all([
+  const [months, ungrouped, costs] = await Promise.all([
     getPnlMonthly(),
     getUngroupedPnlAccounts(),
+    getCostsByAccount(),
   ])
-  const hasData = months.some((m) => m.asOf)
-  const asOf = months.reduce<Date | null>(
-    (max, m) => (m.asOf && (!max || m.asOf > max) ? m.asOf : max),
-    null
-  )
+  const asOf = months[0]?.asOf ?? null
 
-  if (!hasData) {
+  if (!asOf) {
     return (
-      <div className="flex flex-col gap-6">
-        <h1 className="font-heading text-xl font-medium">Monthly P&amp;L</h1>
+      <div className="flex flex-col gap-8">
+        <PageHeader title="Monthly P&L" />
         <Card>
           <CardHeader>
-            <CardTitle>No P&amp;L data yet</CardTitle>
+            <CardTitle>No data yet</CardTitle>
             <CardDescription>
               Run a sync from{" "}
               <Link href="/settings" className="underline">
@@ -61,7 +66,9 @@ export default async function HomePage() {
     )
   }
 
-  const totals = months.slice(0, -1).reduce(
+  const full = months.slice(0, -1)
+  const current = months[months.length - 1]
+  const totals = full.reduce(
     (t, m) => ({
       sales: t.sales + m.sales,
       peopleCosts: t.peopleCosts + m.peopleCosts,
@@ -71,17 +78,32 @@ export default async function HomePage() {
     }),
     { sales: 0, peopleCosts: 0, otherCosts: 0, profit: 0, ctSetAside: 0 }
   )
-  const rows = [...months].reverse()
+  const { kept, other } = topWithOther(costs, 5)
+  const costSlices = [
+    ...kept.map((c) => ({ key: c.key, label: c.label, value: c.total })),
+    ...(other.length
+      ? [
+          {
+            key: "other",
+            label: `Other (${other.length} accounts)`,
+            value: other.reduce((t, c) => t + c.total, 0),
+          },
+        ]
+      : []),
+  ]
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="font-heading text-xl font-medium">Monthly P&amp;L</h1>
-        <p className="text-sm text-muted-foreground">
-          Built from synced Xero invoices, bills, bank transactions and journals
-          · as of {formatAsOf(asOf)}
-        </p>
-      </div>
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        title="Monthly P&L"
+        lede="What came in, what went out on people, and what's left."
+        note={
+          <>
+            Built from synced Xero invoices, bills, bank transactions and
+            journals · as of {formatAsOf(asOf)}
+          </>
+        }
+      />
 
       {ungrouped.length > 0 && (
         <Alert>
@@ -92,25 +114,90 @@ export default async function HomePage() {
         </Alert>
       )}
 
+      <StatRow>
+        <StatTile
+          label="Sales · last 12 months"
+          value={formatGbp(totals.sales)}
+          sub="excluding VAT"
+        />
+        <StatTile
+          label="Profit · last 12 months"
+          value={formatGbp(totals.profit)}
+          sub={`${formatPercent(totals.sales ? totals.profit / totals.sales : null)} margin`}
+          accent
+        />
+        <StatTile
+          label="CT set-aside · last 12 months"
+          value={formatGbp(totals.ctSetAside)}
+        />
+        <StatTile
+          label={`${short(current.month)} to date`}
+          value={formatGbp(current.sales)}
+          sub={`sales · profit ${formatGbp(current.profit)}`}
+        />
+      </StatRow>
+
       <Card>
         <CardHeader>
-          <CardTitle>Sales and people costs</CardTitle>
+          <CardTitle>Sales and costs</CardTitle>
           <CardDescription>
             Last 12 months and this month to date
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <PnlChart
+          <MonthlyBars
+            className="h-72"
+            series={[
+              { key: "sales", label: "Sales" },
+              { key: "peopleCosts", label: "People costs" },
+              { key: "otherCosts", label: "Other costs" },
+            ]}
             data={months.map((m) => ({
-              label: formatMonth(m.month).replace(" 20", " '"),
+              label: short(m.month),
               sales: m.sales,
               peopleCosts: m.peopleCosts,
+              otherCosts: m.otherCosts,
             }))}
           />
         </CardContent>
       </Card>
 
+      <div className="grid gap-6 lg:grid-cols-5">
+        <Card className="lg:col-span-3">
+          <CardHeader>
+            <CardTitle>Profit by month</CardTitle>
+            <CardDescription>Sales minus all costs</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <TrendLine
+              area
+              format="gbp"
+              className="h-56"
+              series={[{ key: "profit", label: "Profit" }]}
+              data={months.map((m) => ({
+                label: short(m.month),
+                profit: m.profit,
+              }))}
+            />
+          </CardContent>
+        </Card>
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Where the money goes</CardTitle>
+            <CardDescription>
+              Costs by account, last 12 full months
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ShareDonut centerLabel="costs" slices={costSlices} />
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
+        <CardHeader>
+          <CardTitle>By month</CardTitle>
+        </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
@@ -125,7 +212,7 @@ export default async function HomePage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((m, i) => (
+              {[...months].reverse().map((m, i) => (
                 <TableRow key={m.month}>
                   <TableCell>
                     {formatMonth(m.month)}

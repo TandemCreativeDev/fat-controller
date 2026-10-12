@@ -1,5 +1,9 @@
 import Link from "next/link"
 
+import { MonthlyBars, ShareDonut } from "@/components/charts"
+import { PageHeader } from "@/components/page-header"
+import { StatRow, StatTile } from "@/components/stat-tile"
+
 import {
   Card,
   CardContent,
@@ -22,6 +26,7 @@ import {
   getInvoicesAsOf,
 } from "@/lib/clients-store"
 import { formatAsOf, formatGbp, formatMonth, formatPercent } from "@/lib/format"
+import { topWithOther } from "@/lib/series"
 import { requireDirector } from "@/lib/session"
 
 const xeroContactUrl = (id: string) => `https://go.xero.com/Contacts/View/${id}`
@@ -48,8 +53,8 @@ export default async function ClientsPage() {
 
   if (summary.length === 0) {
     return (
-      <div className="flex flex-col gap-6">
-        <h1 className="font-heading text-xl font-medium">Clients</h1>
+      <div className="flex flex-col gap-8">
+        <PageHeader title="Clients" />
         <Card>
           <CardHeader>
             <CardTitle>No sales invoices yet</CardTitle>
@@ -73,13 +78,102 @@ export default async function ClientsPage() {
     grid.clients.reduce((t, c) => t + (c.byMonth[m] ?? 0), 0)
   )
 
+  const ranked = grid.clients.map((c) => ({
+    ...c,
+    key: c.contactId,
+    label: c.name,
+  }))
+  const { kept, other } = topWithOther(ranked, 5)
+  const chartSeries = [
+    ...kept.map((c) => ({ key: c.key, label: c.label })),
+    ...(other.length
+      ? [{ key: "other", label: `Other (${other.length})` }]
+      : []),
+  ]
+  const gridTotal = ranked.reduce((t, c) => t + c.total, 0)
+  const topClient = [...ranked].sort((a, b) => b.total - a.total)[0]
+  const topShare = topClient && gridTotal ? topClient.total / gridTotal : null
+
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="font-heading text-xl font-medium">Clients</h1>
-        <p className="text-sm text-muted-foreground">
-          From Xero sales invoices · as of {formatAsOf(asOf)}
-        </p>
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        title="Clients"
+        lede="Who we invoice, how much, and how fast they pay."
+        note={<>From Xero sales invoices · as of {formatAsOf(asOf)}</>}
+      />
+
+      <StatRow>
+        <StatTile
+          label="Invoiced · this FY"
+          value={formatGbp(sum((r) => r.invoicedFy))}
+          sub={`since ${fyLabel(fyStart)}`}
+          accent
+        />
+        <StatTile
+          label="Invoiced · last FY"
+          value={formatGbp(sum((r) => r.invoicedPrevFy))}
+        />
+        <StatTile
+          label="Outstanding"
+          value={formatGbp(sum((r) => r.outstanding))}
+          sub={`${summary.filter((r) => r.outstanding > 0).length} clients owe us`}
+        />
+        <StatTile
+          label="Biggest client · 12 months"
+          value={topClient ? formatPercent(topShare) : "–"}
+          sub={topClient ? `${topClient.name} share of invoicing` : undefined}
+        />
+      </StatRow>
+
+      <div className="grid gap-6 lg:grid-cols-5">
+        <Card className="lg:col-span-3">
+          <CardHeader>
+            <CardTitle>Invoiced by client</CardTitle>
+            <CardDescription>
+              Last 12 months and this month to date, excluding VAT
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <MonthlyBars
+              stacked
+              series={chartSeries}
+              data={grid.months.map((m) => ({
+                label: formatMonth(m).replace(" 20", " '"),
+                ...Object.fromEntries(
+                  chartSeries.map((s) => [
+                    s.key,
+                    s.key === "other"
+                      ? other.reduce((t, c) => t + (c.byMonth[m] ?? 0), 0)
+                      : (grid.clients.find((c) => c.contactId === s.key)
+                          ?.byMonth[m] ?? 0),
+                  ])
+                ),
+              }))}
+            />
+          </CardContent>
+        </Card>
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Share of revenue</CardTitle>
+            <CardDescription>
+              Invoiced over the last 12 months and this month
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ShareDonut
+              centerLabel="invoiced"
+              slices={chartSeries.map((s) => ({
+                key: s.key,
+                label: s.label,
+                value:
+                  s.key === "other"
+                    ? other.reduce((t, c) => t + c.total, 0)
+                    : (grid.clients.find((c) => c.contactId === s.key)?.total ??
+                      0),
+              }))}
+            />
+          </CardContent>
+        </Card>
       </div>
 
       <Card>

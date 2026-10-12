@@ -6,7 +6,6 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { db, pool } from "@/db"
 import {
   accountGroup,
-  settings,
   syncCursor,
   syncRun,
   xeroConnection,

@@ -53,3 +53,28 @@ export async function getUngroupedPnlAccounts() {
   `)
   return res.rows
 }
+
+/** Costs by account over the last 12 full months, for the cost-mix chart. */
+export async function getCostsByAccount() {
+  const res = await db.execute<{
+    account_id: string
+    name: string
+    group: "people" | "other"
+    amount: string
+  }>(sql`
+    select a.account_id, a.name, g."group", (-sum(l.credit))::text as amount
+    from v_ledger_line l
+    join account_group g on g.account_id = l.account_id and g."group" in ('people', 'other')
+    join xero_account a on a.account_id = l.account_id
+    where l.date >= date_trunc('month', now() at time zone 'Europe/London') - interval '12 months'
+      and l.date < date_trunc('month', now() at time zone 'Europe/London')
+    group by 1, 2, 3
+    having sum(l.credit) <> 0
+  `)
+  return res.rows.map((r) => ({
+    key: r.account_id,
+    label: r.name,
+    group: r.group,
+    total: Number(r.amount),
+  }))
+}
