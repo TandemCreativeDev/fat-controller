@@ -46,6 +46,10 @@
 - [x] Clients screen: `v_sales_document`, `v_revenue_by_client_month`, `v_client_summary` (FY and last FY, shares, received, outstanding, days to pay, monthly grid, links to Xero contacts)
 - [ ] Take-home engine (needs the dividend method parameters) + Tax & take-home screen; checked against the last two manual calculations
 
+- [x] Staff page (staff pay by person, share, cost-to-sales)
+- [x] Charts and headline tiles on P&L and Clients; dark glass theme
+- [x] Analysis pack export (Markdown, optional invoice-line CSV) with `v_aged_debtors`, `v_take_home_ytd`, `v_current_fy`
+
 ## M3: Depth
 
 - [ ] `project_map` and project view

@@ -3,10 +3,12 @@ export function PageHeader({
   title,
   lede,
   note,
+  actions,
 }: {
   title: string
   lede?: string
   note?: React.ReactNode
+  actions?: React.ReactNode
 }) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
@@ -16,7 +18,10 @@ export function PageHeader({
         </h1>
         {lede && <p className="mt-1.5 text-muted-foreground">{lede}</p>}
       </div>
-      {note && <p className="text-xs text-muted-foreground">{note}</p>}
+      <div className="flex flex-col items-start gap-2 sm:items-end">
+        {actions}
+        {note && <p className="text-xs text-muted-foreground">{note}</p>}
+      </div>
     </div>
   )
 }

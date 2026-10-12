@@ -29,6 +29,7 @@ import {
 import { topWithOther } from "@/lib/series"
 import { requireDirector } from "@/lib/session"
 import { cn } from "@/lib/utils"
+import { ExportPack } from "./export-pack"
 
 const short = (m: string) => formatMonth(m).replace(" 20", " '")
 const money = (n: number) => (
@@ -97,6 +98,7 @@ export default async function HomePage() {
       <PageHeader
         title="Monthly P&L"
         lede="What came in, what went out on people, and what's left."
+        actions={<ExportPack />}
         note={
           <>
             Built from synced Xero invoices, bills, bank transactions and
