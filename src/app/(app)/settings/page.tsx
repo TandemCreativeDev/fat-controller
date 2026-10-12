@@ -5,6 +5,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { PageHeader } from "@/components/page-header"
 import { getSettings } from "@/lib/settings-store"
 import { requireDirector } from "@/lib/session"
 import { FinanceForm } from "./finance-form"
@@ -26,8 +27,11 @@ export default async function SettingsPage({
   ])
 
   return (
-    <div className="flex flex-col gap-6">
-      <h1 className="font-heading text-xl font-medium">Settings</h1>
+    <div className="flex max-w-3xl flex-col gap-8">
+      <PageHeader
+        title="Settings"
+        lede="Xero connection, finance settings and your password."
+      />
       <XeroCard flash={xero} reason={reason} />
       <Card>
         <CardHeader>

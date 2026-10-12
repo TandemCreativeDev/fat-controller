@@ -15,9 +15,11 @@ export default async function SignInPage() {
 
   return (
     <main className="flex min-h-svh items-center justify-center p-6">
-      <Card className="w-full max-w-sm">
+      <Card className="w-full max-w-sm px-2 py-6">
         <CardHeader>
-          <CardTitle>fat-controller</CardTitle>
+          <CardTitle className="text-gradient-accent font-heading text-2xl font-semibold tracking-[-0.03em]">
+            fat-controller
+          </CardTitle>
           <CardDescription>Sign in with your director account.</CardDescription>
         </CardHeader>
         <CardContent>

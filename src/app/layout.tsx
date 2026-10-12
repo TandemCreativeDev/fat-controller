@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 
 import "./globals.css"
@@ -18,6 +18,8 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 }
 
+export const viewport: Viewport = { themeColor: "#07070d" }
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -28,14 +30,15 @@ export default function RootLayout({
       lang="en-GB"
       suppressHydrationWarning
       className={cn(
-        "antialiased",
+        "dark antialiased",
         fontMono.variable,
         "font-sans",
         geist.variable
       )}
     >
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <div className="app-backdrop" aria-hidden="true" />
+        <ThemeProvider forcedTheme="dark">{children}</ThemeProvider>
       </body>
     </html>
   )

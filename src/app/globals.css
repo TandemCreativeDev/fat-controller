@@ -20,6 +20,7 @@
     --color-chart-3: var(--chart-3);
     --color-chart-2: var(--chart-2);
     --color-chart-1: var(--chart-1);
+    --color-positive: var(--positive);
     --color-ring: var(--ring);
     --color-input: var(--input);
     --color-border: var(--border);
@@ -71,7 +72,7 @@
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
+    --radius: 0.875rem;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
     --sidebar-primary: oklch(0.205 0 0);
@@ -83,37 +84,41 @@
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.7 0.14 250);
-    --chart-2: oklch(0.8 0.14 70);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+    /* Night palette (violet / indigo / cyan / pink / amber on near-black). */
+    --background: #07070d;
+    --foreground: #f4f4f8;
+    --card: rgb(255 255 255 / 0.035);
+    --card-foreground: #f4f4f8;
+    --popover: #12121c;
+    --popover-foreground: #f4f4f8;
+    --primary: #8b5cf6;
+    --primary-foreground: #ffffff;
+    --secondary: rgb(255 255 255 / 0.06);
+    --secondary-foreground: #f4f4f8;
+    --muted: rgb(255 255 255 / 0.05);
+    --muted-foreground: #9a9bb0;
+    --accent: rgb(255 255 255 / 0.07);
+    --accent-foreground: #f4f4f8;
+    --destructive: #fb7185;
+    --border: rgb(255 255 255 / 0.08);
+    --input: rgb(255 255 255 / 0.1);
+    --ring: #a78bfa;
+    --chart-1: #8b5cf6;
+    --chart-2: #0891b2;
+    --chart-3: #ec4899;
+    --chart-4: #d97706;
+    --chart-5: #6366f1;
+    --positive: #34d399;
+    --sidebar: #0b0b14;
+    --sidebar-foreground: #f4f4f8;
+    --sidebar-primary: #8b5cf6;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: rgb(255 255 255 / 0.06);
+    --sidebar-accent-foreground: #f4f4f8;
+    --sidebar-border: rgb(255 255 255 / 0.08);
+    --sidebar-ring: #a78bfa;
+    --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    color-scheme: dark;
 }
 
 @layer base {
@@ -122,8 +127,90 @@
     }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "cv11", "ss01";
     }
   html {
     @apply font-sans;
     }
+}
+/*
+ * Backdrop: static gradient glows, a masked grid and grain. All CSS, no blur
+ * filters or animation, so it costs one paint.
+ */
+@layer components {
+  .app-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(40rem 30rem at 0% -10%, rgb(139 92 246 / 0.32), transparent 70%),
+      radial-gradient(34rem 28rem at 100% 10%, rgb(34 211 238 / 0.16), transparent 70%),
+      radial-gradient(44rem 34rem at 30% 110%, rgb(236 72 153 / 0.13), transparent 70%),
+      radial-gradient(120% 80% at 50% -10%, #1a1440 0%, transparent 60%),
+      var(--background);
+  }
+  .app-backdrop::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(ellipse 70% 55% at 50% 0%, #000 30%, transparent 100%);
+  }
+  .app-backdrop::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: var(--noise);
+    opacity: 0.18;
+    mix-blend-mode: overlay;
+  }
+
+  /* Glass card: gradient fill, gradient hairline border, grain. */
+  .glass {
+    position: relative;
+    isolation: isolate;
+    background: linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0.015));
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.06) inset,
+      0 30px 80px -30px rgb(0 0 0 / 0.7);
+  }
+  .glass::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    padding: 1px;
+    border-radius: inherit;
+    background: linear-gradient(140deg, rgb(167 139 250 / 0.5), rgb(255 255 255 / 0.05) 35%, rgb(255 255 255 / 0.02) 65%, rgb(34 211 238 / 0.35));
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+    pointer-events: none;
+  }
+  .glass::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background-image: var(--noise);
+    opacity: 0.1;
+    mix-blend-mode: overlay;
+    pointer-events: none;
+  }
+
+  .text-gradient {
+    background: linear-gradient(180deg, #fff 30%, rgb(255 255 255 / 0.6));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .text-gradient-accent {
+    background: linear-gradient(90deg, #c4b5fd, #a5b4fc 45%, #67e8f9);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
 }

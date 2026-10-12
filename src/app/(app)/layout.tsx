@@ -1,13 +1,8 @@
 import Link from "next/link"
 
 import { requireDirector } from "@/lib/session"
+import { NavLinks } from "./nav-links"
 import { SignOutButton } from "./sign-out-button"
-
-const nav = [
-  { href: "/", label: "P&L" },
-  { href: "/clients", label: "Clients" },
-  { href: "/settings", label: "Settings" },
-]
 
 export default async function AppLayout({
   children,
@@ -18,29 +13,24 @@ export default async function AppLayout({
 
   return (
     <div className="flex min-h-svh flex-col">
-      <header className="border-b">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-6 px-6">
-          <Link href="/" className="font-heading font-medium">
-            fat-controller
+      <header className="sticky top-0 z-20 border-b border-border/60 bg-background/70 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-6">
+          <Link
+            href="/"
+            className="font-heading text-[15px] font-semibold tracking-tight"
+          >
+            <span className="text-gradient-accent">fat-controller</span>
           </Link>
-          <nav className="flex gap-4 text-sm text-muted-foreground">
-            {nav.map((n) => (
-              <Link
-                key={n.href}
-                href={n.href}
-                className="hover:text-foreground"
-              >
-                {n.label}
-              </Link>
-            ))}
-          </nav>
+          <NavLinks />
           <div className="ml-auto flex items-center gap-3 text-sm text-muted-foreground">
-            <span>{director.name}</span>
+            <span className="hidden sm:inline">{director.name}</span>
             <SignOutButton />
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 p-6">{children}</main>
+      <main className="mx-auto w-full max-w-6xl flex-1 px-6 pt-10 pb-16">
+        {children}
+      </main>
     </div>
   )
 }
