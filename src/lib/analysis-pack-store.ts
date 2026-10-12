@@ -11,6 +11,7 @@ import {
 } from "@/db/schema"
 import type { AnalysisPackInput } from "@/lib/analysis-pack"
 import { lastMonths, londonToday } from "@/lib/pnl"
+import { getClientSummary } from "@/lib/clients-store"
 import { getPnlMonthly } from "@/lib/pnl-store"
 import { getSettings } from "@/lib/settings-store"
 
@@ -31,6 +32,9 @@ export async function getAnalysisPackInput(
   const [fy] = await db.select().from(vCurrentFy)
   const settings = await getSettings()
   const pnl = await getPnlMonthly()
+  const clientsFy = (await getClientSummary()).filter(
+    (c) => c.invoicesFy > 0 || c.invoicedFy !== 0
+  )
 
   const groups = await db.execute<{ group: string; name: string }>(sql`
     select distinct g."group", a.name
@@ -126,6 +130,12 @@ export async function getAnalysisPackInput(
       ...r,
       invoiced: Number(r.invoiced),
       received: Number(r.received),
+    })),
+    clientsFy: clientsFy.map((c) => ({
+      client: c.name,
+      invoiced: c.invoicedFy,
+      invoices: c.invoicesFy,
+      avgInvoice: c.avgInvoiceFy,
     })),
     aged: aged.map((a) => ({
       client: a.client,

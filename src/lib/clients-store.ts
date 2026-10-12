@@ -33,6 +33,8 @@ export async function getClientSummary() {
     outstanding: Number(r.outstanding),
     avgDaysToPay: n(r.avgDaysToPay),
     lastInvoiceDate: r.lastInvoiceDate,
+    invoicesFy: r.invoicesFy,
+    avgInvoiceFy: n(r.avgInvoiceFy),
   }))
 }
 

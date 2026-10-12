@@ -29,6 +29,13 @@ export type AnalysisPackInput = {
     invoiced: number
     received: number
   }[]
+  /** This financial year, one row per client with any invoicing. */
+  clientsFy: {
+    client: string
+    invoiced: number
+    invoices: number
+    avgInvoice: number | null
+  }[]
   aged: {
     client: string
     invoiceNumber: string | null
@@ -160,6 +167,24 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
         d.clientMonths
           .filter((r) => r.invoiced !== 0)
           .map((r) => [ym(r.month), r.client, gbp(r.invoiced)])
+      )
+  )
+
+  out.push(
+    `## Invoicing by client this financial year\n\nSince ${d.fyStart}, by invoice date, ex VAT. Invoiced is net of credit notes; Invoices counts invoices only, so a credit note lowers the average without changing the count.\n\n` +
+      markdownTable(
+        [
+          "Client",
+          "Invoiced (GBP, by invoice date)",
+          "Invoices",
+          "Average invoice (GBP)",
+        ],
+        d.clientsFy.map((c) => [
+          c.client,
+          gbp(c.invoiced),
+          String(c.invoices),
+          gbpOrBlank(c.avgInvoice),
+        ])
       )
   )
 

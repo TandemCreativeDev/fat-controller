@@ -76,7 +76,8 @@ export const vRevenueByClientMonth = pgView("v_revenue_by_client_month", {
 /**
  * One row per client: this and last financial year (from the financial_year_start
  * setting, London date), share of this year's invoiced total, outstanding balance
- * and average days to pay over all paid invoices.
+ * and average days to pay over all paid invoices. Invoice count and average
+ * invoice this year count invoices only; credit notes lower the total, not the count.
  */
 export const vClientSummary = pgView("v_client_summary", {
   contactId: uuid("contact_id"),
@@ -90,6 +91,8 @@ export const vClientSummary = pgView("v_client_summary", {
   outstanding: money("outstanding").notNull(),
   avgDaysToPay: numeric("avg_days_to_pay"),
   lastInvoiceDate: date("last_invoice_date"),
+  invoicesFy: integer("invoices_fy").notNull(),
+  avgInvoiceFy: money("avg_invoice_fy"),
 }).as(sql`
   with today as (select (now() at time zone 'Europe/London')::date as d),
   fy_setting as (
@@ -116,7 +119,8 @@ export const vClientSummary = pgView("v_client_summary", {
       coalesce(sum(net_gbp) filter (where date >= fy_start - interval '1 year' and date < fy_start), 0) as invoiced_prev_fy,
       sum(outstanding_gbp) as outstanding,
       round(avg(days_to_pay), 1) as avg_days_to_pay,
-      max(date) filter (where kind = 'invoice') as last_invoice_date
+      max(date) filter (where kind = 'invoice') as last_invoice_date,
+      count(*) filter (where kind = 'invoice' and date >= fy_start)::int as invoices_fy
     from docs
     group by contact_id
   ),
@@ -141,7 +145,9 @@ export const vClientSummary = pgView("v_client_summary", {
     coalesce(p.amount, 0)::numeric(14, 2) as paid_fy,
     pc.outstanding::numeric(14, 2),
     pc.avg_days_to_pay,
-    pc.last_invoice_date
+    pc.last_invoice_date,
+    pc.invoices_fy,
+    round(pc.invoiced_fy / nullif(pc.invoices_fy, 0), 2)::numeric(14, 2) as avg_invoice_fy
   from per_client pc
   cross join total
   left join xero_contact c on c.contact_id = pc.contact_id

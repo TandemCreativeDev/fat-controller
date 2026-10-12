@@ -127,7 +127,7 @@ beforeAll(async () => {
 afterAll(() => pool.end())
 
 describe("v_client_summary", () => {
-  it("computes per-client FY totals, shares, outstanding and days to pay", async () => {
+  it("computes per-client FY totals, shares, outstanding, days to pay and average invoice", async () => {
     const rows = await db
       .select()
       .from(vClientSummary)
@@ -145,6 +145,8 @@ describe("v_client_summary", () => {
         outstanding: "600.00",
         avgDaysToPay: "20.0",
         lastInvoiceDate: d(Y, "01-10"),
+        invoicesFy: 1,
+        avgInvoiceFy: "1000.00",
       },
       {
         contactId: B,
@@ -158,6 +160,9 @@ describe("v_client_summary", () => {
         outstanding: "2880.00",
         avgDaysToPay: null,
         lastInvoiceDate: d(Y, "01-05"),
+        // The credit note lowers the total, not the invoice count.
+        invoicesFy: 1,
+        avgInvoiceFy: "2000.00",
       },
     ])
   })

@@ -42,6 +42,9 @@ const input: AnalysisPackInput = {
       received: 750,
     },
   ],
+  clientsFy: [
+    { client: "Steady Co", invoiced: 4500, invoices: 3, avgInvoice: 1500 },
+  ],
   aged: [],
   costs: [
     {
@@ -93,6 +96,13 @@ describe("buildAnalysisPack", () => {
       "| Month (YYYY-MM) | Client | Invoiced (GBP, by invoice date) |"
     )
     expect(section).not.toContain("Late Payer Ltd")
+  })
+
+  it("lists invoice count and average invoice per client this FY", () => {
+    expect(md).toContain(
+      "| Client | Invoiced (GBP, by invoice date) | Invoices | Average invoice (GBP) |"
+    )
+    expect(md).toContain("| Steady Co | 4500.00 | 3 | 1500.00 |")
   })
 
   it("puts cash received in its own section at the end", () => {

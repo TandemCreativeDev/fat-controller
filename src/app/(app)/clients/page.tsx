@@ -181,8 +181,9 @@ export default async function ClientsPage() {
           <CardTitle>By client</CardTitle>
           <CardDescription>
             Invoiced amounts exclude VAT, net of credit notes. This financial
-            year started {fyLabel(fyStart)}. Received is the amount clients
-            actually paid this financial year, by payment date.
+            year started {fyLabel(fyStart)}; Invoices and Avg invoice cover this
+            year only. Received is the amount clients actually paid this
+            financial year, by payment date.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -192,6 +193,8 @@ export default async function ClientsPage() {
                 <TableHead>Client</TableHead>
                 <TableHead className="text-right">This FY</TableHead>
                 <TableHead className="text-right">Share</TableHead>
+                <TableHead className="text-right">Invoices</TableHead>
+                <TableHead className="text-right">Avg invoice</TableHead>
                 <TableHead className="text-right">Last FY</TableHead>
                 <TableHead className="text-right">Share</TableHead>
                 <TableHead className="text-right">Received</TableHead>
@@ -223,6 +226,12 @@ export default async function ClientsPage() {
                   <TableCell className="text-right text-muted-foreground tabular-nums">
                     {c.invoicedFy ? formatPercent(c.shareFy) : "–"}
                   </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {c.invoicesFy || "–"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {c.avgInvoiceFy === null ? "–" : money(c.avgInvoiceFy)}
+                  </TableCell>
                   <TableCell className="text-right">
                     {money(c.invoicedPrevFy)}
                   </TableCell>
@@ -249,6 +258,10 @@ export default async function ClientsPage() {
                 <TableCell>Total</TableCell>
                 <TableCell className="text-right">
                   {money(sum((r) => r.invoicedFy))}
+                </TableCell>
+                <TableCell />
+                <TableCell className="text-right tabular-nums">
+                  {sum((r) => r.invoicesFy)}
                 </TableCell>
                 <TableCell />
                 <TableCell className="text-right">
