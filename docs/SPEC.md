@@ -222,6 +222,7 @@ Shadcn base-nova defaults on the neutral palette, Geist Sans and Geist Mono, lig
 - **2026-10-12** `/api/health` is public and returns only `{ ok }`.
 - **2026-10-12** The P&L is built from synced transactions (`v_ledger_line`), not Xero's P&L report (director's call). The report is no longer fetched; `xero_pnl_line` and `xero_report_snapshot` stay until a later migration drops them.
 - **2026-10-12** Directors' Remuneration counts as People costs.
+- **2026-10-12** The main measure everywhere is Sales invoiced, by invoice date: Tandem invoices as soon as work is done, so invoice date measures work delivered. Cash received is secondary and never sits beside Sales month by month; no "Cash in" column on the P&L. Rolling 3-month averages of Sales and Profit use complete months only. No billable-days tracking.
 
 ## Open questions
 

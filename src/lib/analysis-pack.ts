@@ -20,6 +20,8 @@ export type AnalysisPackInput = {
     profit: number
     margin: number | null
     ctSetAside: number
+    salesAvg3: number | null
+    profitAvg3: number | null
   }[]
   clientMonths: {
     month: string
@@ -56,6 +58,7 @@ export type AnalysisPackInput = {
 }
 
 const gbp = (n: number) => n.toFixed(2)
+const gbpOrBlank = (n: number | null) => (n === null ? "" : gbp(n))
 const pct = (n: number | null) => (n === null ? "" : (n * 100).toFixed(1))
 const ym = (iso: string) => iso.slice(0, 7)
 const cell = (v: string | number | null) =>
@@ -68,9 +71,9 @@ export function markdownTable(
   rows: (string | number | null)[][]
 ): string {
   if (rows.length === 0) return "_No rows._"
-  // Right-align columns whose every value is a number (amounts arrive as strings).
+  // Right-align columns whose every non-blank value is a number (amounts arrive as strings).
   const right = headers.map((_, i) =>
-    rows.every((r) => /^-?\d+(\.\d+)?$/.test(String(r[i] ?? "")))
+    rows.every((r) => /^(-?\d+(\.\d+)?)?$/.test(String(r[i] ?? "")))
   )
   return [
     `| ${headers.map(cell).join(" | ")} |`,
@@ -103,7 +106,8 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
       `- **Company:** ${d.company} (UK limited company)`,
       `- **Period:** ${ym(d.period.from)} to ${ym(d.period.to)} (the last 12 full months plus the current month to date; the current month is incomplete)`,
       `- **Currency:** GBP. Every amount column is in pounds sterling, two decimal places, no currency symbol.`,
-      `- **VAT:** all Sales and cost figures **exclude VAT**. "Received" (cash from clients) **includes VAT**, because it is money in the bank.`,
+      `- **Main measure:** Sales invoiced, by invoice date. The company invoices as soon as work is done, so invoice date measures work delivered. Cash received is secondary and has its own section at the end.`,
+      `- **VAT:** Sales, Invoiced and cost figures **exclude VAT**. Cash received and Outstanding are the amounts clients actually paid or still owe.`,
       `- **Basis:** accruals by document date (invoice, bill or bank transaction date), built from Xero sales invoices, bills, credit notes, bank spend/receive transactions and manual journals. Bank transfers are excluded.`,
       `- **Financial year:** starts ${d.fyStart}. "Year to date" means since that date.`,
       `- **Corporation Tax set-aside:** ${(d.ctRate * 100).toFixed(1)}% of Sales, a management rule for cash planning, not a tax computation.`,
@@ -117,6 +121,7 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
       `- **Other costs:** every other expense account: ${d.groups.other.join(", ") || "none"}.`,
       `- **Profit:** Sales − People costs − Other costs (before Corporation Tax).`,
       `- **Margin (%):** Profit ÷ Sales × 100.`,
+      `- **3-month average:** the mean of that month and the two before it, complete months only. Blank for the current month (unfinished) and where the period has no two complete months before it.`,
     ].join("\n")
   )
 
@@ -131,6 +136,8 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
           "Profit (GBP)",
           "Margin (%)",
           "CT set-aside (GBP)",
+          "Sales 3-month avg (GBP)",
+          "Profit 3-month avg (GBP)",
         ],
         d.pnl.map((m) => [
           ym(m.month),
@@ -140,25 +147,19 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
           gbp(m.profit),
           pct(m.margin),
           gbp(m.ctSetAside),
+          gbpOrBlank(m.salesAvg3),
+          gbpOrBlank(m.profitAvg3),
         ])
       )
   )
 
   out.push(
-    "## Revenue by client by month\n\nOne row per client per month with any activity. Invoiced is net of credit notes.\n\n" +
+    "## Revenue by client by month\n\nOne row per client per month with any invoicing, by invoice date. Net of credit notes, ex VAT.\n\n" +
       markdownTable(
-        [
-          "Month (YYYY-MM)",
-          "Client",
-          "Invoiced (GBP, ex VAT)",
-          "Received (GBP, inc VAT)",
-        ],
-        d.clientMonths.map((r) => [
-          ym(r.month),
-          r.client,
-          gbp(r.invoiced),
-          gbp(r.received),
-        ])
+        ["Month (YYYY-MM)", "Client", "Invoiced (GBP, by invoice date)"],
+        d.clientMonths
+          .filter((r) => r.invoiced !== 0)
+          .map((r) => [ym(r.month), r.client, gbp(r.invoiced)])
       )
   )
 
@@ -172,7 +173,7 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
           "Due date",
           "Days overdue",
           "Bucket",
-          "Outstanding (GBP, inc VAT)",
+          "Outstanding (GBP)",
         ],
         d.aged.map((a) => [
           a.client,
@@ -209,6 +210,16 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
           gbp(t.dividends),
           gbp(t.total),
         ])
+      )
+  )
+
+  out.push(
+    "## Cash received (GBP, by payment date)\n\nWhat each client actually paid, in the month the payment arrived. Not comparable month by month with Sales: Sales is by invoice date, and a payment usually settles an invoice from an earlier month.\n\n" +
+      markdownTable(
+        ["Month (YYYY-MM)", "Client", "Cash received (GBP)"],
+        d.clientMonths
+          .filter((r) => r.received !== 0)
+          .map((r) => [ym(r.month), r.client, gbp(r.received)])
       )
   )
 

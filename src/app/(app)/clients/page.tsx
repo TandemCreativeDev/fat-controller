@@ -181,8 +181,8 @@ export default async function ClientsPage() {
           <CardTitle>By client</CardTitle>
           <CardDescription>
             Invoiced amounts exclude VAT, net of credit notes. This financial
-            year started {fyLabel(fyStart)}. Received is cash in (including VAT)
-            this financial year.
+            year started {fyLabel(fyStart)}. Received is the amount clients
+            actually paid this financial year, by payment date.
           </CardDescription>
         </CardHeader>
         <CardContent>
