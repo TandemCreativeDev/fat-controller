@@ -11,6 +11,9 @@ import {
   xeroInvoice,
   xeroPayment,
 } from "@/db/schema"
+import { getClientTable } from "@/lib/clients-store"
+import { resolvePeriod } from "@/lib/period"
+import { londonToday } from "@/lib/pnl"
 
 // Financial year = calendar year, so "this FY" is this calendar year (London).
 const Y = Number(
@@ -197,5 +200,45 @@ describe("v_revenue_by_client_month", () => {
         paidGbp: "0.00",
       },
     ])
+  })
+})
+
+describe("getClientTable", () => {
+  const ctx = {
+    fyStart: d(Y, "01-01"),
+    firstMonth: d(Y - 1, "06-01"),
+    today: londonToday(),
+  }
+
+  it("this FY: invoiced, count, average, the year before and cash received", async () => {
+    const rows = await getClientTable(resolvePeriod("fy", ctx))
+    expect(
+      rows.map((r) => [
+        r.name,
+        r.invoiced,
+        r.invoices,
+        r.avgInvoice,
+        r.invoicedPrev,
+        r.received,
+        r.outstanding,
+      ])
+    ).toEqual([
+      // The credit note lowers B's total, not its invoice count.
+      ["Beta Inc", 2000, 1, 2000, 0, 0, 2880],
+      ["Alpha Ltd", 1000, 1, 1000, 500, 1200, 600],
+    ])
+    expect(rows[0].share).toBeCloseTo(2 / 3)
+    expect(rows[1].sharePrev).toBe(1)
+  })
+
+  it("lifetime covers every year and has no comparison", async () => {
+    const rows = await getClientTable(resolvePeriod("lifetime", ctx))
+    const alpha = rows.find((r) => r.name === "Alpha Ltd")
+    expect(alpha).toMatchObject({
+      invoiced: 1500,
+      invoices: 2,
+      avgInvoice: 750,
+      invoicedPrev: 0,
+    })
   })
 })

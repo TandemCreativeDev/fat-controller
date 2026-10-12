@@ -41,6 +41,7 @@
 - [x] `account_group` table with tested default rules + warning for uncounted accounts
 - [ ] Mapping UI to override an account's group
 - [ ] Drop `ct_set_aside` from `v_pnl_monthly` (unread since CT was removed; drop once that deploy is live)
+- [ ] Drop `v_client_summary` and `v_take_home_ytd` (unread since the period switch)
 - [x] P&L engine: monthly report snapshots → grouped rows (pure, fixture-tested)
 - [x] `v_pnl_monthly`; home screen table + sales vs people chart; as-of time
 - [ ] Links from figures to the Xero records behind them

@@ -21,24 +21,34 @@ import {
 } from "@/components/ui/table"
 import { formatGbp, formatMonth, formatPercent } from "@/lib/format"
 import { requireDirector } from "@/lib/session"
+import { getPeriod } from "@/lib/period-store"
 import { getStaffPay } from "@/lib/staff-store"
+import { PeriodSwitch } from "../period-switch"
 
 const short = (m: string) => formatMonth(m).replace(" 20", " '")
 const money = (n: number) => (
   <span className="tabular-nums">{n === 0 ? "–" : formatGbp(n)}</span>
 )
 
-export default async function StaffPage() {
+export default async function StaffPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string }>
+}) {
   await requireDirector()
-  const { months, current, staff, monthly } = await getStaffPay()
+  const period = await getPeriod((await searchParams).period)
+  const { months, current, staff, monthly } = await getStaffPay(period)
 
   if (staff.length === 0) {
     return (
       <div className="flex flex-col gap-8">
-        <PageHeader title="Staff" />
+        <PageHeader
+          title="Staff"
+          actions={<PeriodSwitch period={period} path="/staff" />}
+        />
         <Card>
           <CardHeader>
-            <CardTitle>No staff payments yet</CardTitle>
+            <CardTitle>No staff pay in {period.label}</CardTitle>
             <CardDescription>
               Staff pay comes from People-cost accounts other than directors
               (e.g. Salaries). Run a sync from{" "}
@@ -53,12 +63,11 @@ export default async function StaffPage() {
     )
   }
 
-  const full = monthly.slice(0, -1)
-  const since = formatMonth(months[0])
+  const full = monthly.filter((m) => m.month !== current)
+  const thisMonth = monthly.find((m) => m.month === current)
   const totalAll = monthly.reduce((t, m) => t + m.total, 0)
   const salesAll = monthly.reduce((t, m) => t + m.sales, 0)
-  const lastMonth = full[full.length - 1] ?? monthly[0]
-  const thisMonth = monthly[monthly.length - 1]
+  const lastMonth = full.at(-1) ?? monthly[0]
   const paidMonths = full.filter((m) => m.total > 0)
   const avgMonthly = paidMonths.length
     ? paidMonths.reduce((t, m) => t + m.total, 0) / paidMonths.length
@@ -70,26 +79,31 @@ export default async function StaffPage() {
       <PageHeader
         title="Staff"
         lede="What we pay staff each month, excluding directors."
+        actions={<PeriodSwitch period={period} path="/staff" />}
         note="From People-cost lines (e.g. Salaries) in synced Xero transactions"
       />
 
       <StatRow>
         <StatTile
-          label={`Since ${since}`}
+          label={`Staff pay · ${period.title}`}
           value={formatGbp(totalAll)}
           sub={`${formatPercent(salesAll ? totalAll / salesAll : null)} of sales`}
           accent
         />
         <StatTile
-          label={`Last month · ${short(lastMonth.month)}`}
+          label={`Latest full month · ${short(lastMonth.month)}`}
           value={formatGbp(lastMonth.total)}
           sub={`${lastMonth.headcount} paid`}
         />
-        <StatTile
-          label="This month to date"
-          value={formatGbp(thisMonth.total)}
-          sub={`${thisMonth.headcount} paid so far`}
-        />
+        {thisMonth ? (
+          <StatTile
+            label="This month to date"
+            value={formatGbp(thisMonth.total)}
+            sub={`${thisMonth.headcount} paid so far`}
+          />
+        ) : (
+          <StatTile label="Period" value={period.title} sub={period.label} />
+        )}
         <StatTile
           label="Average month"
           value={formatGbp(avgMonthly)}
@@ -101,9 +115,7 @@ export default async function StaffPage() {
         <Card className="lg:col-span-3">
           <CardHeader>
             <CardTitle>Monthly pay by person</CardTitle>
-            <CardDescription>
-              Since {since}, including this month to date
-            </CardDescription>
+            <CardDescription>{period.label}</CardDescription>
           </CardHeader>
           <CardContent>
             <MonthlyBars
@@ -121,11 +133,11 @@ export default async function StaffPage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Share of staff cost</CardTitle>
-            <CardDescription>Since {since}</CardDescription>
+            <CardDescription>{period.label}</CardDescription>
           </CardHeader>
           <CardContent>
             <ShareDonut
-              centerLabel="lifetime"
+              centerLabel={period.title}
               slices={staff.map((p) => ({
                 key: p.key,
                 label: p.name,

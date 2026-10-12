@@ -1,29 +1,36 @@
 import "server-only"
 
-import { gte } from "drizzle-orm"
+import { and, gte, lte } from "drizzle-orm"
 
 import { db } from "@/db"
 import { vStaffPayMonthly } from "@/db/schema"
-import { getLifetimeMonths, getPnlMonthly } from "@/lib/pnl-store"
+import { lastMonths, londonToday } from "@/lib/pnl"
+import type { Period } from "@/lib/period"
+import { getPnlMonthly } from "@/lib/pnl-store"
 
 export type StaffMember = {
   key: string
   name: string
   byMonth: Record<string, number>
-  /** Since records began, including this month to date. */
+  /** Over the period, including this month to date. */
   total: number
   firstPaid: string | null
   lastPaid: string | null
 }
 
-export async function getStaffPay() {
-  const months = (await getLifetimeMonths()).map((m) => m.start)
-  const current = months[months.length - 1]
+export async function getStaffPay(period: Period) {
+  const months = period.months
+  const [{ start: current }] = lastMonths(londonToday(), 1)
   const [rows, pnl] = await Promise.all([
     db
       .select()
       .from(vStaffPayMonthly)
-      .where(gte(vStaffPayMonthly.month, months[0])),
+      .where(
+        and(
+          gte(vStaffPayMonthly.month, months[0]),
+          lte(vStaffPayMonthly.month, months[months.length - 1])
+        )
+      ),
     getPnlMonthly(),
   ])
 

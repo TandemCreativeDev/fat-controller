@@ -1,37 +1,38 @@
 import "server-only"
 
-import { asc, sql } from "drizzle-orm"
+import { and, asc, gte, lte, sql } from "drizzle-orm"
 
 import { db } from "@/db"
 import {
   vAgedDebtors,
   vCurrentFy,
   vTakeHomeMonthly,
-  vTakeHomeYtd,
   xeroOrganisation,
 } from "@/db/schema"
 import type { AnalysisPackInput } from "@/lib/analysis-pack"
-import { getClientSummary } from "@/lib/clients-store"
-import { getLifetimeMonths, getPnlMonthly } from "@/lib/pnl-store"
+import { getClientTable } from "@/lib/clients-store"
+import type { Period } from "@/lib/period"
+import { getPnlMonthly } from "@/lib/pnl-store"
 
 const GROUP_LABEL = { people: "People costs", other: "Other costs" } as const
 
-/** Everything the pack needs, read from the same views as the dashboard. */
+/** Everything the pack needs for a period, read from the same views as the dashboard. */
 export async function getAnalysisPackInput(
+  period: Period,
   includeLines: boolean
 ): Promise<AnalysisPackInput> {
-  const months = await getLifetimeMonths()
-  const from = months[0].start
-  const to = months[months.length - 1].end
+  const { from, to } = period
+  const firstMonth = period.months[0]
 
   const [org] = await db
     .select({ name: xeroOrganisation.name })
     .from(xeroOrganisation)
     .limit(1)
   const [fy] = await db.select().from(vCurrentFy)
-  const pnl = await getPnlMonthly()
-  const clientsFy = (await getClientSummary()).filter(
-    (c) => c.invoicesFy > 0 || c.invoicedFy !== 0
+  const allMonths = await getPnlMonthly()
+  const pnl = allMonths.filter((m) => m.month >= firstMonth && m.month <= to)
+  const clients = (await getClientTable(period)).filter(
+    (c) => c.invoices > 0 || c.invoiced !== 0
   )
 
   const groups = await db.execute<{ group: string; name: string }>(sql`
@@ -56,7 +57,7 @@ export async function getAnalysisPackInput(
       r.invoiced_gbp::text as invoiced, r.paid_gbp::text as received
     from v_revenue_by_client_month r
     left join xero_contact c on c.contact_id = r.contact_id
-    where r.month between ${from} and ${to}
+    where r.month between ${firstMonth} and ${to}
       and (r.invoiced_gbp <> 0 or r.paid_gbp <> 0)
     order by r.month, client
   `)
@@ -85,11 +86,13 @@ export async function getAnalysisPackInput(
   const takeHomeMonthly = await db
     .select()
     .from(vTakeHomeMonthly)
+    .where(
+      and(
+        gte(vTakeHomeMonthly.month, firstMonth),
+        lte(vTakeHomeMonthly.month, to)
+      )
+    )
     .orderBy(asc(vTakeHomeMonthly.month), asc(vTakeHomeMonthly.director))
-  const takeHome = await db
-    .select()
-    .from(vTakeHomeYtd)
-    .orderBy(asc(vTakeHomeYtd.director))
 
   const lines = includeLines
     ? (
@@ -118,8 +121,13 @@ export async function getAnalysisPackInput(
   return {
     company: org?.name ?? "Company",
     generatedAt: new Date(),
-    asOf: pnl[0]?.asOf ?? null,
-    period: { from, to },
+    asOf: allMonths[0]?.asOf ?? null,
+    period: {
+      title: period.title,
+      from,
+      to,
+      includesToday: allMonths.at(-1)?.month === period.months.at(-1),
+    },
     fyStart: fy?.fyStart ?? from,
     groups: {
       sales: names("sales"),
@@ -132,11 +140,11 @@ export async function getAnalysisPackInput(
       invoiced: Number(r.invoiced),
       received: Number(r.received),
     })),
-    clientsFy: clientsFy.map((c) => ({
+    clients: clients.map((c) => ({
       client: c.name,
-      invoiced: c.invoicedFy,
-      invoices: c.invoicesFy,
-      avgInvoice: c.avgInvoiceFy,
+      invoiced: c.invoiced,
+      invoices: c.invoices,
+      avgInvoice: c.avgInvoice,
     })),
     aged: aged.map((a) => ({
       client: a.client,
@@ -155,12 +163,6 @@ export async function getAnalysisPackInput(
     })),
     takeHomeMonthly: takeHomeMonthly.map((t) => ({
       month: t.month,
-      director: t.director,
-      salary: Number(t.salaryGbp),
-      dividends: Number(t.dividendsGbp),
-      total: Number(t.totalGbp),
-    })),
-    takeHome: takeHome.map((t) => ({
       director: t.director,
       salary: Number(t.salaryGbp),
       dividends: Number(t.dividendsGbp),

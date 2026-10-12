@@ -8,7 +8,8 @@ export type AnalysisPackInput = {
   company: string
   generatedAt: Date
   asOf: Date | null
-  period: { from: string; to: string }
+  /** "This FY", "Last FY" or "Lifetime", with inclusive dates. */
+  period: { title: string; from: string; to: string; includesToday: boolean }
   fyStart: string
   groups: { sales: string[]; people: string[]; other: string[] }
   pnl: {
@@ -27,8 +28,8 @@ export type AnalysisPackInput = {
     invoiced: number
     received: number
   }[]
-  /** This financial year, one row per client with any invoicing. */
-  clientsFy: {
+  /** The period, one row per client with any invoicing. */
+  clients: {
     client: string
     invoiced: number
     invoices: number
@@ -44,15 +45,9 @@ export type AnalysisPackInput = {
     outstanding: number
   }[]
   costs: { month: string; account: string; group: string; amount: number }[]
-  /** Every month since records began, one row per director per month with pay. */
+  /** One row per director per month with pay in the period. */
   takeHomeMonthly: {
     month: string
-    director: string
-    salary: number
-    dividends: number
-    total: number
-  }[]
-  takeHome: {
     director: string
     salary: number
     dividends: number
@@ -109,11 +104,11 @@ export function csv(
   return [headers, ...rows].map((r) => r.map(q).join(",")).join("\n")
 }
 
-function lifetimePnlRow(pnl: AnalysisPackInput["pnl"]) {
+function totalPnlRow(pnl: AnalysisPackInput["pnl"]) {
   const sales = sum(pnl.map((m) => m.sales))
   const profit = sum(pnl.map((m) => m.profit))
   return [
-    "Lifetime",
+    "Total",
     gbp(sales),
     gbp(sum(pnl.map((m) => m.peopleCosts))),
     gbp(sum(pnl.map((m) => m.otherCosts))),
@@ -135,12 +130,12 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
       "## Context",
       "",
       `- **Company:** ${d.company} (UK limited company)`,
-      `- **Period:** ${ym(d.period.from)} to ${ym(d.period.to)} (lifetime: every month since records began, plus the current month to date; the current month is incomplete)`,
+      `- **Period:** ${d.period.title}, ${d.period.from} to ${d.period.to}${d.period.includesToday ? " (the current month is incomplete: figures run to the data date)" : ""}. ${d.period.title === "Lifetime" ? "Lifetime starts at the first month with P&L activity." : ""}`.trimEnd(),
       `- **Currency:** GBP. Every amount column is in pounds sterling, two decimal places, no currency symbol.`,
       `- **Main measure:** Sales invoiced, by invoice date. The company invoices as soon as work is done, so invoice date measures work delivered. Cash received is secondary and has its own section at the end.`,
       `- **VAT:** Sales, Invoiced and cost figures **exclude VAT**. Cash received and Outstanding are the amounts clients actually paid or still owe.`,
       `- **Basis:** accruals by document date (invoice, bill or bank transaction date), built from Xero sales invoices, bills, credit notes, bank spend/receive transactions and manual journals. Bank transfers are excluded.`,
-      `- **Financial year:** starts ${d.fyStart}. "Year to date" means since that date.`,
+      `- **Financial year:** the current one started ${d.fyStart}.`,
       `- **Data as of:** ${date(d.asOf)}. Generated ${date(d.generatedAt)}.`,
       `- These are management figures from the company's own dashboard, not statutory accounts.`,
       "",
@@ -156,7 +151,7 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
   )
 
   out.push(
-    "## Monthly P&L\n\nOne row per month, then the lifetime total.\n\n" +
+    "## Monthly P&L\n\nOne row per month, then the total for the period.\n\n" +
       markdownTable(
         [
           "Month (YYYY-MM)",
@@ -179,7 +174,7 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
             gbpOrBlank(m.salesAvg3),
             gbpOrBlank(m.profitAvg3),
           ])
-          .concat([lifetimePnlRow(d.pnl)])
+          .concat(d.pnl.length ? [totalPnlRow(d.pnl)] : [])
       )
   )
 
@@ -194,7 +189,7 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
   )
 
   out.push(
-    `## Invoicing by client this financial year\n\nSince ${d.fyStart}, by invoice date, ex VAT. Invoiced is net of credit notes; Invoices counts invoices only, so a credit note lowers the average without changing the count.\n\n` +
+    `## Invoicing by client\n\nTotals for the period, by invoice date, ex VAT. Invoiced is net of credit notes; Invoices counts invoices only, so a credit note lowers the average without changing the count.\n\n` +
       markdownTable(
         [
           "Client",
@@ -202,7 +197,7 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
           "Invoices",
           "Average invoice (GBP)",
         ],
-        d.clientsFy.map((c) => [
+        d.clients.map((c) => [
           c.client,
           gbp(c.invoiced),
           String(c.invoices),
@@ -244,7 +239,7 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
   )
 
   out.push(
-    "## Take-home by month\n\nWhat each director was paid each month since records began: salary (Directors' Remuneration) plus dividends paid, before personal income tax and dividend tax.\n\n" +
+    "## Take-home by month\n\nWhat each director was paid each month in the period: salary (Directors' Remuneration) plus dividends paid, before personal income tax and dividend tax.\n\n" +
       markdownTable(
         [
           "Month (YYYY-MM)",
@@ -265,7 +260,7 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
 
   const directors = [...new Set(d.takeHomeMonthly.map((t) => t.director))]
   out.push(
-    "## Take-home lifetime\n\nThe months above, totalled per director.\n\n" +
+    "## Take-home totals\n\nThe months above, totalled per director for the period.\n\n" +
       markdownTable(
         [
           "Director",
@@ -282,24 +277,6 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
             gbp(sum(rows.map((t) => t.total))),
           ]
         })
-      )
-  )
-
-  out.push(
-    `## Take-home year to date\n\nWhat each director has been paid since ${d.fyStart}: salary (Directors' Remuneration) plus dividends paid, before personal income tax and dividend tax.\n\n` +
-      markdownTable(
-        [
-          "Director",
-          "Salary (GBP)",
-          "Dividends (GBP)",
-          "Total paid (GBP, before personal tax)",
-        ],
-        d.takeHome.map((t) => [
-          t.director,
-          gbp(t.salary),
-          gbp(t.dividends),
-          gbp(t.total),
-        ])
       )
   )
 

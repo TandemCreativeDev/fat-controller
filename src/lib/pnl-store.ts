@@ -4,7 +4,7 @@ import { asc, sql } from "drizzle-orm"
 
 import { db } from "@/db"
 import { vPnlMonthly } from "@/db/schema"
-import { lastMonths, londonToday, monthsSince, withRolling3 } from "@/lib/pnl"
+import { lastMonths, londonToday, withRolling3 } from "@/lib/pnl"
 
 export type PnlMonth = {
   month: string
@@ -38,14 +38,6 @@ export async function getPnlMonthly(): Promise<PnlMonth[]> {
   return withRolling3(months, current.start)
 }
 
-/** Every month since the first with P&L activity, to this month. */
-export async function getLifetimeMonths() {
-  const [r] = await db
-    .select({ first: sql<string | null>`min(${vPnlMonthly.month})::text` })
-    .from(vPnlMonthly)
-  return monthsSince(r?.first ?? null, londonToday())
-}
-
 /**
  * Income and expense accounts with activity that land in
  * no column, so the totals would miss them.
@@ -65,8 +57,8 @@ export async function getUngroupedPnlAccounts() {
   return res.rows
 }
 
-/** Costs by account since records began, for the cost-mix chart. */
-export async function getCostsByAccount() {
+/** Costs by account between two dates (inclusive), for the cost-mix chart. */
+export async function getCostsByAccount(from: string, to: string) {
   const res = await db.execute<{
     account_id: string
     name: string
@@ -77,6 +69,7 @@ export async function getCostsByAccount() {
     from v_ledger_line l
     join account_group g on g.account_id = l.account_id and g."group" in ('people', 'other')
     join xero_account a on a.account_id = l.account_id
+    where l.date between ${from} and ${to}
     group by 1, 2, 3
     having sum(l.credit) <> 0
   `)

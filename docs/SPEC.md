@@ -223,6 +223,7 @@ Shadcn base-nova defaults on the neutral palette, Geist Sans and Geist Mono, lig
 - **2026-10-12** The main measure everywhere is Sales invoiced, by invoice date: Tandem invoices as soon as work is done, so invoice date measures work delivered. Cash received is secondary and never sits beside Sales month by month; no "Cash in" column on the P&L. Rolling 3-month averages of Sales and Profit use complete months only. No billable-days tracking.
 - **2026-10-12** No Corporation Tax anywhere in the app: no set-aside figure, rate setting or CT deadline (director's call). `v_pnl_monthly.ct_set_aside` is no longer read and is dropped in a later migration; the stored `ct_set_aside_rate` setting is ignored.
 - **2026-10-12** Figures are lifetime: the P&L, Clients and Staff pages and the analysis pack cover every month from the first with P&L activity to the current month, not a rolling 12 months. The pack adds take-home by month and per-director lifetime totals.
+- **2026-10-12** A period switch (This FY | Last FY | Lifetime, default Lifetime) sits on P&L, Clients and Staff, carried in the URL as `?period=` and followed by the nav and the analysis pack. The 3-month average and "this month to date" tiles ignore it. Client comparisons are against the same span a year earlier; lifetime has none.
 
 ## Open questions
 

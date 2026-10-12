@@ -1,19 +1,21 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 
 import { cn } from "@/lib/utils"
 
+// Dashboard pages share the period switch, so the chosen period follows the nav.
 const nav = [
-  { href: "/", label: "P&L" },
-  { href: "/clients", label: "Clients" },
-  { href: "/staff", label: "Staff" },
-  { href: "/settings", label: "Settings" },
+  { href: "/", label: "P&L", periodic: true },
+  { href: "/clients", label: "Clients", periodic: true },
+  { href: "/staff", label: "Staff", periodic: true },
+  { href: "/settings", label: "Settings", periodic: false },
 ]
 
 export function NavLinks() {
   const pathname = usePathname()
+  const period = useSearchParams().get("period")
   return (
     <nav className="flex gap-1 rounded-xl bg-black/30 p-1 text-sm ring-1 ring-border">
       {nav.map((n) => {
@@ -22,7 +24,11 @@ export function NavLinks() {
         return (
           <Link
             key={n.href}
-            href={n.href}
+            href={
+              n.periodic && period
+                ? `${n.href}?period=${encodeURIComponent(period)}`
+                : n.href
+            }
             aria-current={active ? "page" : undefined}
             className={cn(
               "rounded-lg px-3 py-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground",

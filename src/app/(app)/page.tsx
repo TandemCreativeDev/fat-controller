@@ -29,7 +29,9 @@ import {
 import { topWithOther } from "@/lib/series"
 import { requireDirector } from "@/lib/session"
 import { cn } from "@/lib/utils"
+import { getPeriod } from "@/lib/period-store"
 import { ExportPack } from "./export-pack"
+import { PeriodSwitch } from "./period-switch"
 
 const short = (m: string) => formatMonth(m).replace(" 20", " '")
 const money = (n: number) => (
@@ -38,14 +40,19 @@ const money = (n: number) => (
   </span>
 )
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string }>
+}) {
   await requireDirector()
-  const [months, ungrouped, costs] = await Promise.all([
+  const period = await getPeriod((await searchParams).period)
+  const [all, ungrouped, costs] = await Promise.all([
     getPnlMonthly(),
     getUngroupedPnlAccounts(),
-    getCostsByAccount(),
+    getCostsByAccount(period.from, period.to),
   ])
-  const asOf = months[0]?.asOf ?? null
+  const asOf = all[0]?.asOf ?? null
 
   if (!asOf) {
     return (
@@ -67,12 +74,14 @@ export default async function HomePage() {
     )
   }
 
-  const full = months.slice(0, -1)
-  const current = months[months.length - 1]
-  const lastFull = full[full.length - 1]
+  // The 3-month average and "to date" tiles are always about recent months;
+  // everything else follows the period switch.
+  const current = all[all.length - 1]
+  const lastFull = all.at(-2)
   const avg3 = (n: number | null) => (n === null ? "–" : formatGbp(n))
-  const since = formatMonth(months[0].month)
-  // Lifetime: every month since records began, including this month to date.
+  const months = all.filter(
+    (m) => m.month >= period.months[0] && m.month <= period.to
+  )
   const totals = months.reduce(
     (t, m) => ({
       sales: t.sales + m.sales,
@@ -101,7 +110,12 @@ export default async function HomePage() {
       <PageHeader
         title="Monthly P&L"
         lede="What came in, what went out on people, and what's left."
-        actions={<ExportPack />}
+        actions={
+          <>
+            <PeriodSwitch period={period} path="/" />
+            <ExportPack period={period.key} />
+          </>
+        }
         note={
           <>
             Built from synced Xero invoices, bills, bank transactions and
@@ -119,14 +133,22 @@ export default async function HomePage() {
         </Alert>
       )}
 
+      {months.length === 0 && (
+        <Alert>
+          <AlertDescription>
+            No P&amp;L activity in {period.label}: records start later.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <StatRow>
         <StatTile
-          label={`Sales · since ${since}`}
+          label={`Sales · ${period.title}`}
           value={formatGbp(totals.sales)}
-          sub="excluding VAT"
+          sub={`${period.label} · excluding VAT`}
         />
         <StatTile
-          label={`Profit · since ${since}`}
+          label={`Profit · ${period.title}`}
           value={formatGbp(totals.profit)}
           sub={`${formatPercent(totals.sales ? totals.profit / totals.sales : null)} margin`}
           accent
@@ -146,9 +168,7 @@ export default async function HomePage() {
       <Card>
         <CardHeader>
           <CardTitle>Sales and costs</CardTitle>
-          <CardDescription>
-            Since {since}, including this month to date
-          </CardDescription>
+          <CardDescription>{period.label}</CardDescription>
         </CardHeader>
         <CardContent>
           <MonthlyBars
@@ -196,7 +216,7 @@ export default async function HomePage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Where the money goes</CardTitle>
-            <CardDescription>Costs by account since {since}</CardDescription>
+            <CardDescription>Costs by account, {period.label}</CardDescription>
           </CardHeader>
           <CardContent>
             <ShareDonut centerLabel="costs" slices={costSlices} />
@@ -223,11 +243,11 @@ export default async function HomePage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {[...months].reverse().map((m, i) => (
+              {[...months].reverse().map((m) => (
                 <TableRow key={m.month}>
                   <TableCell>
                     {formatMonth(m.month)}
-                    {i === 0 && (
+                    {m.month === current.month && (
                       <span className="ml-2 text-xs text-muted-foreground">
                         to date
                       </span>
@@ -257,7 +277,7 @@ export default async function HomePage() {
             </TableBody>
             <TableFooter>
               <TableRow>
-                <TableCell>Since {since}</TableCell>
+                <TableCell>Total · {period.title}</TableCell>
                 <TableCell className="text-right">
                   {money(totals.sales)}
                 </TableCell>

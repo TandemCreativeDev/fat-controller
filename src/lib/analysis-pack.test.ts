@@ -11,7 +11,12 @@ const input: AnalysisPackInput = {
   company: "Demo Ltd",
   generatedAt: new Date("2026-10-12T09:00:00Z"),
   asOf: new Date("2026-10-12T08:30:00Z"),
-  period: { from: "2025-10-01", to: "2026-10-31" },
+  period: {
+    title: "Lifetime",
+    from: "2025-10-01",
+    to: "2026-10-31",
+    includesToday: true,
+  },
   fyStart: "2026-09-01",
   groups: { sales: ["Sales"], people: ["Salaries"], other: ["Software"] },
   pnl: [
@@ -40,7 +45,7 @@ const input: AnalysisPackInput = {
       received: 750,
     },
   ],
-  clientsFy: [
+  clients: [
     { client: "Steady Co", invoiced: 4500, invoices: 3, avgInvoice: 1500 },
   ],
   aged: [],
@@ -68,14 +73,6 @@ const input: AnalysisPackInput = {
       total: 3047.7,
     },
   ],
-  takeHome: [
-    {
-      director: "Director One",
-      salary: 1047.5,
-      dividends: 2000,
-      total: 3047.5,
-    },
-  ],
 }
 
 describe("buildAnalysisPack", () => {
@@ -83,7 +80,9 @@ describe("buildAnalysisPack", () => {
 
   it("starts with the context header and definitions", () => {
     expect(md.startsWith("# Demo Ltd: finance analysis pack")).toBe(true)
-    expect(md).toContain("**Period:** 2025-10 to 2026-10")
+    expect(md).toContain(
+      "**Period:** Lifetime, 2025-10-01 to 2026-10-31 (the current month is incomplete"
+    )
     expect(md).toContain("**Main measure:** Sales invoiced, by invoice date.")
     expect(md).toContain("Sales, Invoiced and cost figures **exclude VAT**")
     expect(md).not.toContain("includes VAT")
@@ -101,9 +100,9 @@ describe("buildAnalysisPack", () => {
   })
 
   it("covers every month and ends the P&L with a lifetime total", () => {
-    expect(md).toContain("lifetime: every month since records began")
+    expect(md).toContain("Lifetime starts at the first month with P&L activity")
     expect(md).toContain(
-      "| Lifetime | 1000.00 | 400.00 | 100.00 | 500.00 | 50.0 |  |  |"
+      "| Total | 1000.00 | 400.00 | 100.00 | 500.00 | 50.0 |  |  |"
     )
   })
 
@@ -111,7 +110,7 @@ describe("buildAnalysisPack", () => {
     expect(md).toContain(
       "| 2026-07 | Director One | 1000.00 | 3000.10 | 4000.10 |"
     )
-    const lifetime = md.split("## Take-home lifetime")[1].split("##")[0]
+    const lifetime = md.split("## Take-home totals")[1].split("##")[0]
     expect(lifetime).toContain("| Director One | 2047.50 | 5000.30 | 7047.80 |")
   })
 
@@ -140,7 +139,7 @@ describe("buildAnalysisPack", () => {
     expect(section).toContain("| 2026-09 | Late Payer Ltd | 750.00 |")
     expect(section).not.toContain("A \\| B Ltd")
     expect(md.indexOf("## Cash received")).toBeGreaterThan(
-      md.indexOf("## Take-home year to date")
+      md.indexOf("## Take-home totals")
     )
   })
 

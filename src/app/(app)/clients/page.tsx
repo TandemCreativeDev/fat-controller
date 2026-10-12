@@ -22,12 +22,14 @@ import {
 } from "@/components/ui/table"
 import {
   getClientMonthGrid,
-  getClientSummary,
+  getClientTable,
   getInvoicesAsOf,
 } from "@/lib/clients-store"
 import { formatAsOf, formatGbp, formatMonth, formatPercent } from "@/lib/format"
 import { topWithOther } from "@/lib/series"
+import { getPeriod } from "@/lib/period-store"
 import { requireDirector } from "@/lib/session"
+import { PeriodSwitch } from "../period-switch"
 
 const xeroContactUrl = (id: string) => `https://go.xero.com/Contacts/View/${id}`
 
@@ -43,21 +45,27 @@ const fyLabel = (iso: string) =>
     timeZone: "UTC",
   })
 
-export default async function ClientsPage() {
+export default async function ClientsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string }>
+}) {
   await requireDirector()
+  const period = await getPeriod((await searchParams).period)
   const [summary, grid, asOf] = await Promise.all([
-    getClientSummary(),
-    getClientMonthGrid(),
+    getClientTable(period),
+    getClientMonthGrid(period),
     getInvoicesAsOf(),
   ])
+  const switcher = <PeriodSwitch period={period} path="/clients" />
 
   if (summary.length === 0) {
     return (
       <div className="flex flex-col gap-8">
-        <PageHeader title="Clients" />
+        <PageHeader title="Clients" actions={switcher} />
         <Card>
           <CardHeader>
-            <CardTitle>No sales invoices yet</CardTitle>
+            <CardTitle>No sales invoices in {period.label}</CardTitle>
             <CardDescription>
               Run a sync from{" "}
               <Link href="/settings" className="underline">
@@ -71,8 +79,7 @@ export default async function ClientsPage() {
     )
   }
 
-  const fyStart = summary[0].fyStart
-  const since = formatMonth(grid.months[0])
+  const prev = period.previous
   const sum = (f: (r: (typeof summary)[number]) => number) =>
     summary.reduce((t, r) => t + f(r), 0)
   const monthTotals = grid.months.map((m) =>
@@ -100,27 +107,37 @@ export default async function ClientsPage() {
       <PageHeader
         title="Clients"
         lede="Who we invoice, how much, and how fast they pay."
+        actions={switcher}
         note={<>From Xero sales invoices · as of {formatAsOf(asOf)}</>}
       />
 
       <StatRow>
         <StatTile
-          label="Invoiced · this FY"
-          value={formatGbp(sum((r) => r.invoicedFy))}
-          sub={`since ${fyLabel(fyStart)}`}
+          label={`Invoiced · ${period.title}`}
+          value={formatGbp(sum((r) => r.invoiced))}
+          sub={period.label}
           accent
         />
-        <StatTile
-          label="Invoiced · last FY"
-          value={formatGbp(sum((r) => r.invoicedPrevFy))}
-        />
+        {prev ? (
+          <StatTile
+            label="Invoiced · year before"
+            value={formatGbp(sum((r) => r.invoicedPrev))}
+            sub={prev.label}
+          />
+        ) : (
+          <StatTile
+            label={`Invoices · ${period.title}`}
+            value={String(sum((r) => r.invoices))}
+            sub={`to ${summary.filter((r) => r.invoices > 0).length} clients`}
+          />
+        )}
         <StatTile
           label="Outstanding"
           value={formatGbp(sum((r) => r.outstanding))}
           sub={`${summary.filter((r) => r.outstanding > 0).length} clients owe us`}
         />
         <StatTile
-          label="Biggest client · lifetime"
+          label={`Biggest client · ${period.title}`}
           value={topClient ? formatPercent(topShare) : "–"}
           sub={topClient ? `${topClient.name} share of invoicing` : undefined}
         />
@@ -130,9 +147,7 @@ export default async function ClientsPage() {
         <Card className="lg:col-span-3">
           <CardHeader>
             <CardTitle>Invoiced by client</CardTitle>
-            <CardDescription>
-              Since {since}, including this month to date, excluding VAT
-            </CardDescription>
+            <CardDescription>{period.label}, excluding VAT</CardDescription>
           </CardHeader>
           <CardContent>
             <MonthlyBars
@@ -156,7 +171,7 @@ export default async function ClientsPage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Share of revenue</CardTitle>
-            <CardDescription>Invoiced since {since}</CardDescription>
+            <CardDescription>Invoiced, {period.label}</CardDescription>
           </CardHeader>
           <CardContent>
             <ShareDonut
@@ -179,10 +194,11 @@ export default async function ClientsPage() {
         <CardHeader>
           <CardTitle>By client</CardTitle>
           <CardDescription>
-            Invoiced amounts exclude VAT, net of credit notes. This financial
-            year started {fyLabel(fyStart)}; Invoices and Avg invoice cover this
-            year only. Received is the amount clients actually paid this
-            financial year, by payment date.
+            {period.label}, by invoice date. Invoiced amounts exclude VAT, net
+            of credit notes; Invoices counts invoices only.
+            {prev && <> Year before is {prev.label}.</>} Received is the amount
+            clients actually paid in the period, by payment date. Outstanding
+            and days to pay are as of today.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -190,12 +206,16 @@ export default async function ClientsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Client</TableHead>
-                <TableHead className="text-right">This FY</TableHead>
+                <TableHead className="text-right">{period.title}</TableHead>
                 <TableHead className="text-right">Share</TableHead>
                 <TableHead className="text-right">Invoices</TableHead>
                 <TableHead className="text-right">Avg invoice</TableHead>
-                <TableHead className="text-right">Last FY</TableHead>
-                <TableHead className="text-right">Share</TableHead>
+                {prev && (
+                  <>
+                    <TableHead className="text-right">Year before</TableHead>
+                    <TableHead className="text-right">Share</TableHead>
+                  </>
+                )}
                 <TableHead className="text-right">Received</TableHead>
                 <TableHead className="text-right">Outstanding</TableHead>
                 <TableHead className="text-right">Avg days to pay</TableHead>
@@ -220,25 +240,29 @@ export default async function ClientsPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    {money(c.invoicedFy)}
+                    {money(c.invoiced)}
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground tabular-nums">
-                    {c.invoicedFy ? formatPercent(c.shareFy) : "–"}
+                    {c.invoiced ? formatPercent(c.share) : "–"}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {c.invoicesFy || "–"}
+                    {c.invoices || "–"}
                   </TableCell>
                   <TableCell className="text-right">
-                    {c.avgInvoiceFy === null ? "–" : money(c.avgInvoiceFy)}
+                    {c.avgInvoice === null ? "–" : money(c.avgInvoice)}
                   </TableCell>
+                  {prev && (
+                    <>
+                      <TableCell className="text-right">
+                        {money(c.invoicedPrev)}
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground tabular-nums">
+                        {c.invoicedPrev ? formatPercent(c.sharePrev) : "–"}
+                      </TableCell>
+                    </>
+                  )}
                   <TableCell className="text-right">
-                    {money(c.invoicedPrevFy)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground tabular-nums">
-                    {c.invoicedPrevFy ? formatPercent(c.sharePrevFy) : "–"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {money(c.paidFy)}
+                    {money(c.received)}
                   </TableCell>
                   <TableCell className="text-right">
                     {money(c.outstanding)}
@@ -256,19 +280,23 @@ export default async function ClientsPage() {
               <TableRow>
                 <TableCell>Total</TableCell>
                 <TableCell className="text-right">
-                  {money(sum((r) => r.invoicedFy))}
+                  {money(sum((r) => r.invoiced))}
                 </TableCell>
                 <TableCell />
                 <TableCell className="text-right tabular-nums">
-                  {sum((r) => r.invoicesFy)}
+                  {sum((r) => r.invoices)}
                 </TableCell>
                 <TableCell />
+                {prev && (
+                  <>
+                    <TableCell className="text-right">
+                      {money(sum((r) => r.invoicedPrev))}
+                    </TableCell>
+                    <TableCell />
+                  </>
+                )}
                 <TableCell className="text-right">
-                  {money(sum((r) => r.invoicedPrevFy))}
-                </TableCell>
-                <TableCell />
-                <TableCell className="text-right">
-                  {money(sum((r) => r.paidFy))}
+                  {money(sum((r) => r.received))}
                 </TableCell>
                 <TableCell className="text-right">
                   {money(sum((r) => r.outstanding))}
@@ -284,9 +312,7 @@ export default async function ClientsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Invoiced by month</CardTitle>
-          <CardDescription>
-            Since {since}, including this month to date, excluding VAT
-          </CardDescription>
+          <CardDescription>{period.label}, excluding VAT</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
