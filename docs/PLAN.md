@@ -29,7 +29,7 @@
 - [x] Xero client: token refresh in the same transaction as the write-back, `If-Modified-Since`, paging, 50/min throttle, Zod response schemas
 - [x] Raw tables + `sync_run` + `sync_cursor`; integration tests (paging, cursor, resume, line replacement, lock)
 - [x] `/api/cron/sync` (bearer `CRON_SECRET`), time-budgeted resumable passes, advisory lock
-- [ ] Vercel cron entry in `vercel.json` (with the first production deploy)
+- [x] Vercel cron entry in `vercel.json` (daily 05:00 UTC)
 - [x] Manual sync button (loops 45 s slices for the backfill; 5-minute cooldown after a complete pass); status, counts and errors on settings
 - [ ] Failure email after two failures or a refresh-token error
 - [x] Proven locally against Tandem's organisation (all scopes granted, including P&L reports)
