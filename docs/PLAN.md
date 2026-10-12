@@ -2,7 +2,7 @@
 
 ## Where we are
 
-**2026-10-12.** Local: sign-in, settings, Xero connect + daily-style sync, and the monthly P&L home screen all work on Tandem's real data. Production paused by request. Clients screen done. Next: account-group mapping UI, then Tax & take-home.
+**2026-10-12.** Live at https://fat-controller.vercel.app (Vercel lhr1, Neon London). Sign-in, settings, Xero connect + sync (daily cron 05:00 UTC), monthly P&L and Clients work. Next: production Xero connect, account-group mapping UI, then Tax & take-home.
 
 **Open questions:** see the spec's _Open questions_; the dividend method parameters and how projects are tagged in Xero block M2/M3 detail, not M1.
 
@@ -16,10 +16,10 @@
 - [x] Sign-in (no sign-up), proxy redirect, `requireDirector()`, sign out
 - [x] Settings page: CT rate, financial year start, change password
 - [x] `/api/health`; gates script; Vitest for settings and director parsing
-- [ ] GitHub repo `TandemCreativeDev/fat-controller` (public), push
-- [ ] Vercel project in `lhr1`, git connected, `vercel.json` build = migrate → seed → build
-- [ ] Neon (aws-eu-west-2) through the Marketplace; env vars set; secrets added
-- [ ] First deploy verified; live URL handed over
+- [x] GitHub repo `TandemCreativeDev/fat-controller` (public), push
+- [x] Vercel project in `lhr1`, git connected, `vercel.json` build = migrate → seed → build
+- [x] Neon (aws-eu-west-2) through the Marketplace; env vars set; secrets added
+- [x] First deploy verified; live URL handed over
 
 ## M1: Xero connect and sync
 
