@@ -34,16 +34,21 @@ export async function getPnlMonthly(): Promise<PnlMonth[]> {
   }))
 }
 
-/** P&L lines in the shown period that land in no group, so the totals would miss them. */
+/**
+ * Income and expense accounts with activity in the shown period that land in
+ * no column, so the totals would miss them.
+ */
 export async function getUngroupedPnlAccounts() {
-  const res = await db.execute<{ account_name: string; total: string }>(sql`
-    select l.account_name, sum(l.amount)::text as total
-    from xero_pnl_line l
+  const res = await db.execute<{ account_name: string }>(sql`
+    select a.name as account_name
+    from v_ledger_line l
+    join xero_account a on a.account_id = l.account_id
     left join account_group g on g.account_id = l.account_id
-    where (g.account_id is null or g."group" = 'exclude')
-      and l.period_start >= date_trunc('month', now() at time zone 'Europe/London') - interval '12 months'
-    group by l.account_name
-    having sum(l.amount) <> 0
+    where a.class in ('REVENUE', 'EXPENSE')
+      and (g.account_id is null or g."group" = 'exclude')
+      and l.date >= date_trunc('month', now() at time zone 'Europe/London') - interval '12 months'
+    group by a.name
+    having sum(l.credit) <> 0
     order by 1
   `)
   return res.rows

@@ -31,7 +31,7 @@ import {
 import { defaultGroup, fyStartFromYearEnd } from "@/lib/pnl"
 import { xeroGet, XeroApiError } from "./client"
 import * as rec from "./records"
-import { syncPnlReports } from "./reports"
+import { ensureAccountGroups } from "./account-groups"
 import { XeroAuthError } from "./tokens"
 
 const PAGE_SIZE = 100
@@ -359,19 +359,10 @@ export async function runSync(
         )
           break
       }
-      const stopped = steps.some(
-        (s) => s.error && /token|not connected|daily API limit/i.test(s.error)
-      )
-      if (
-        !stopped &&
-        steps.length === RESOURCES.length &&
-        Date.now() < deadline
-      ) {
-        steps.push(await syncPnlReports(trigger, deadline))
-      }
+      await ensureAccountGroups()
       const failed = steps.some((s) => s.error)
       const allComplete =
-        steps.length === RESOURCES.length + 1 && steps.every((s) => s.complete)
+        steps.length === RESOURCES.length && steps.every((s) => s.complete)
       return {
         status: failed ? "failed" : allComplete ? "done" : "partial",
         steps,

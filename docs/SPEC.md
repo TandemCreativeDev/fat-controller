@@ -72,7 +72,7 @@ One row per month, last 12 months plus the current month to date, with a bar cha
 | Margin       | Profit as a % of sales                                                            |
 | CT set-aside | 20% of sales                                                                      |
 
-**Source:** Xero's Profit and Loss report, pulled month by month. Each Xero account is mapped once to Sales, People costs or Other costs in an `account_group` settings table, so the grouping matches how we think about the business, not Xero's chart of accounts. This also picks up payroll, which reaches the ledger without appearing as invoices or bills.
+**Source:** our own synced transactions, not Xero's Profit and Loss report: sales invoices, bills, credit notes, bank spend and receive lines, and posted manual journals, each line by account (`v_ledger_line`). Each Xero account is mapped once to Sales, People costs or Other costs in an `account_group` settings table, so the grouping matches how we think about the business, not Xero's chart of accounts. On Tandem's data this reproduces Xero's P&L exactly per account per month (checked 2026-10-12); payroll here reaches the ledger as bank transactions. If payroll ever posts through Xero Payroll journals (not visible on the Starter plan), the gap would show as a difference from Xero's report.
 
 **Other screens**
 
@@ -220,6 +220,8 @@ Shadcn base-nova defaults on the neutral palette, Geist Sans and Geist Mono, lig
 - **2026-10-12** The repo is public (Vercel Hobby, TandemCreativeDev org). Nothing company-specific goes into code, fixtures or seed data; client names and mappings are entered in the app.
 - **2026-10-12** Main-only deploys; no preview environments for now.
 - **2026-10-12** `/api/health` is public and returns only `{ ok }`.
+- **2026-10-12** The P&L is built from synced transactions (`v_ledger_line`), not Xero's P&L report (director's call). The report is no longer fetched; `xero_pnl_line` and `xero_report_snapshot` stay until a later migration drops them.
+- **2026-10-12** Directors' Remuneration counts as People costs.
 
 ## Open questions
 

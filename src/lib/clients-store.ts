@@ -9,8 +9,7 @@ import {
   vRevenueByClientMonth,
   xeroContact,
 } from "@/db/schema"
-import { lastMonths } from "@/lib/pnl"
-import { londonToday } from "@/lib/xero/reports"
+import { lastMonths, londonToday } from "@/lib/pnl"
 
 const n = (v: string | null) => (v === null ? null : Number(v))
 

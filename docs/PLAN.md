@@ -33,7 +33,8 @@
 - [x] Manual sync button (loops 45 s slices for the backfill; 5-minute cooldown after a complete pass); status, counts and errors on settings
 - [ ] Failure email after two failures or a refresh-token error
 - [x] Proven locally against Tandem's organisation (all scopes granted, including P&L reports)
-- [x] Monthly P&L report snapshots (13 months, refreshed when older than 12 h)
+- [x] ~~Monthly P&L report snapshots~~ replaced: P&L built from transactions (`v_ledger_line`), matches Xero exactly
+- [ ] Drop `xero_pnl_line` (and `xero_report_snapshot` unless M3 nightly reports need it) once the transaction P&L deploy is live
 
 ## M2: Core dashboards
 

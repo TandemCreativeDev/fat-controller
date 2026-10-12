@@ -1,5 +1,3 @@
-import { z } from "zod"
-
 /** How an account counts in the monthly P&L. "exclude" leaves it out entirely. */
 export const ACCOUNT_GROUPS = ["sales", "people", "other", "exclude"] as const
 export type AccountGroup = (typeof ACCOUNT_GROUPS)[number]
@@ -29,70 +27,6 @@ export function defaultGroup(account: {
   return "exclude"
 }
 
-// ------------------------------------------------------------------ report parsing
-
-const cell = z.looseObject({
-  Value: z.string().nullish(),
-  Attributes: z
-    .array(z.looseObject({ Id: z.string(), Value: z.string() }))
-    .nullish(),
-})
-type Row = {
-  RowType: string
-  Title?: string | null
-  Cells?: z.infer<typeof cell>[] | null
-  Rows?: Row[] | null
-}
-const row: z.ZodType<Row> = z.lazy(() =>
-  z.looseObject({
-    RowType: z.string(),
-    Title: z.string().nullish(),
-    Cells: z.array(cell).nullish(),
-    Rows: z.array(row).nullish(),
-  })
-)
-export const reportResponseSchema = z.looseObject({
-  Reports: z
-    .array(z.looseObject({ ReportID: z.string(), Rows: z.array(row) }))
-    .min(1),
-})
-
-export type PnlLine = {
-  accountId: string
-  accountName: string
-  section: string
-  amount: string
-}
-
-/**
- * Extract per-account amounts from a single-period Xero ProfitAndLoss report.
- * Summary and calculated rows (Total Income, Gross Profit, Net Profit) carry no
- * account attribute and are skipped; we recompute totals from our own grouping.
- */
-export function parsePnlReport(body: unknown): PnlLine[] {
-  const report = reportResponseSchema.parse(body).Reports[0]
-  const lines: PnlLine[] = []
-  for (const section of report.Rows) {
-    if (section.RowType !== "Section") continue
-    for (const r of section.Rows ?? []) {
-      if (r.RowType !== "Row" || !r.Cells || r.Cells.length < 2) continue
-      const accountId = r.Cells[0].Attributes?.find(
-        (a) => a.Id === "account"
-      )?.Value
-      if (!accountId) continue
-      const value = (r.Cells[1].Value ?? "").replace(/,/g, "")
-      if (!/^-?\d+(\.\d+)?$/.test(value)) continue
-      lines.push({
-        accountId,
-        accountName: r.Cells[0].Value ?? "",
-        section: section.Title ?? "",
-        amount: Number(value).toFixed(2),
-      })
-    }
-  }
-  return lines
-}
-
 // ------------------------------------------------------------------ periods
 
 /** "YYYY-MM-DD" first and last day of each of the last `count` months, oldest first, ending with `today`'s month. */
@@ -114,6 +48,14 @@ export function lastMonths(
     })
   }
   return out
+}
+
+/** Today's date in London, as a UTC-midnight Date for month arithmetic. */
+export function londonToday(now = new Date()): Date {
+  const ymd = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/London",
+  }).format(now)
+  return new Date(`${ymd}T00:00:00Z`)
 }
 
 /** Financial year start (day after the year end Xero reports). */

@@ -53,7 +53,7 @@ export default async function HomePage() {
               <Link href="/settings" className="underline">
                 Settings
               </Link>{" "}
-              to pull the monthly Profit and Loss reports from Xero.
+              to pull invoices, bank transactions and journals from Xero.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -78,7 +78,8 @@ export default async function HomePage() {
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="font-heading text-xl font-medium">Monthly P&amp;L</h1>
         <p className="text-sm text-muted-foreground">
-          From Xero&apos;s Profit and Loss report · as of {formatAsOf(asOf)}
+          Built from synced Xero invoices, bills, bank transactions and journals
+          · as of {formatAsOf(asOf)}
         </p>
       </div>
 

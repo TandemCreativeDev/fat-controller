@@ -34,7 +34,10 @@ export const accountGroup = pgTable("account_group", {
     .$onUpdate(() => new Date()),
 })
 
-/** Per-account amounts from the latest single-month Xero P&L report. */
+/**
+ * Per-account amounts from Xero's single-month P&L report. No longer written
+ * (the P&L is built from transactions); kept until a later migration drops it.
+ */
 export const xeroPnlLine = pgTable(
   "xero_pnl_line",
   {
@@ -48,8 +51,9 @@ export const xeroPnlLine = pgTable(
 )
 
 /**
- * The home screen: last 12 months plus the current month to date (London time).
- * Months without a report show zeros and a null as_of.
+ * The home screen: last 12 months plus the current month to date (London time),
+ * built from v_ledger_line (our synced transactions), grouped by account_group.
+ * as_of is when the transaction resources last finished syncing.
  */
 export const vPnlMonthly = pgView("v_pnl_monthly", {
   month: date("month").notNull(),
@@ -75,20 +79,20 @@ export const vPnlMonthly = pgView("v_pnl_monthly", {
     ) as r
   ),
   agg as (
+    -- Sales are credits; costs are debits (negated credits).
     select
-      l.period_start,
-      coalesce(sum(l.amount) filter (where g."group" = 'sales'), 0) as sales,
-      coalesce(sum(l.amount) filter (where g."group" = 'people'), 0) as people,
-      coalesce(sum(l.amount) filter (where g."group" = 'other'), 0) as other
-    from xero_pnl_line l
+      date_trunc('month', l.date)::date as period_start,
+      coalesce(sum(l.credit) filter (where g."group" = 'sales'), 0) as sales,
+      coalesce(-sum(l.credit) filter (where g."group" = 'people'), 0) as people,
+      coalesce(-sum(l.credit) filter (where g."group" = 'other'), 0) as other
+    from v_ledger_line l
     join account_group g on g.account_id = l.account_id
-    group by l.period_start
+    group by 1
   ),
-  snap as (
-    select period_start, max(fetched_at) as as_of
-    from xero_report_snapshot
-    where report = 'ProfitAndLoss'
-    group by period_start
+  synced as (
+    select max(last_completed_at) as as_of
+    from sync_cursor
+    where resource in ('invoices', 'credit_notes', 'bank_transactions', 'manual_journals')
   )
   select
     m.month,
@@ -100,10 +104,10 @@ export const vPnlMonthly = pgView("v_pnl_monthly", {
       then round((a.sales - a.people - a.other) / a.sales, 4)
     end as margin,
     round(coalesce(a.sales, 0) * rate.r, 2)::numeric(14, 2) as ct_set_aside,
-    s.as_of
+    synced.as_of
   from months m
   cross join rate
   left join agg a on a.period_start = m.month
-  left join snap s on s.period_start = m.month
+  cross join synced
   order by m.month
 `)
