@@ -2,7 +2,7 @@
 
 ## Where we are
 
-**2026-10-12.** M0 works locally; repo pushed; Vercel project linked (git connect and Neon still need browser steps; production paused by request until local is solid). M1 connect + sync is built and tested with a mocked Xero; next is a real connect from localhost, then the first dashboards.
+**2026-10-12.** Local: sign-in, settings, Xero connect + daily-style sync, and the monthly P&L home screen all work on Tandem's real data. Production paused by request. Next: account-group mapping UI, then Clients and Tax & take-home.
 
 **Open questions:** see the spec's _Open questions_; the dividend method parameters and how projects are tagged in Xero block M2/M3 detail, not M1.
 
@@ -32,14 +32,16 @@
 - [ ] Vercel cron entry in `vercel.json` (with the first production deploy)
 - [x] Manual sync button (loops 45 s slices for the backfill; 5-minute cooldown after a complete pass); status, counts and errors on settings
 - [ ] Failure email after two failures or a refresh-token error
-- [ ] Prove locally against the Xero demo company, then Tandem's organisation
-- [ ] Report snapshots (P&L by month) if the report scopes are granted; otherwise derive P&L from invoices, bank transactions and manual journals
+- [x] Proven locally against Tandem's organisation (all scopes granted, including P&L reports)
+- [x] Monthly P&L report snapshots (13 months, refreshed when older than 12 h)
 
 ## M2: Core dashboards
 
-- [ ] `account_group` mapping UI (Sales / People / Other) with unmapped-account warning
-- [ ] P&L engine: monthly report snapshots → grouped rows (pure, fixture-tested)
-- [ ] `v_pnl_monthly`; home screen table + sales vs people chart; as-of time, links to Xero
+- [x] `account_group` table with tested default rules + warning for uncounted accounts
+- [ ] Mapping UI to override an account's group
+- [x] P&L engine: monthly report snapshots → grouped rows (pure, fixture-tested)
+- [x] `v_pnl_monthly`; home screen table + sales vs people chart; as-of time
+- [ ] Links from figures to the Xero records behind them
 - [ ] Clients screen: `v_revenue_by_client_month`, days to pay, outstanding
 - [ ] Take-home engine (needs the dividend method parameters) + Tax & take-home screen; checked against the last two manual calculations
 
