@@ -21,6 +21,11 @@ async function throttle() {
   recentCalls.push(Date.now())
 }
 
+/** Tests only: clear the call history so each case starts with a full minute's allowance. */
+export function resetThrottle() {
+  recentCalls.length = 0
+}
+
 export class XeroApiError extends Error {
   constructor(
     message: string,

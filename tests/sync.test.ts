@@ -5,6 +5,8 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { db, pool } from "@/db"
 import {
+  accountGroup,
+  settings,
   syncCursor,
   syncRun,
   xeroConnection,
@@ -13,7 +15,9 @@ import {
 } from "@/db/schema"
 import { env } from "@/env"
 import { encrypt, parseKey } from "@/lib/crypto"
+import { resetThrottle } from "@/lib/xero/client"
 import { runSync } from "@/lib/xero/sync"
+import { vPnlMonthly } from "@/db/schema"
 
 const TENANT = "a3b2c1d0-0000-4000-8000-000000000001"
 const ms = (iso: string) => `/Date(${Date.parse(iso)}+0000)/`
@@ -42,6 +46,34 @@ function invoice(n: number, updated: string) {
   }
 }
 
+const ACCOUNTS = [
+  {
+    AccountID: "aaaaaaaa-0000-4000-8000-000000000001",
+    Name: "Sales",
+    Type: "REVENUE",
+    Class: "REVENUE",
+  },
+  {
+    AccountID: "aaaaaaaa-0000-4000-8000-000000000002",
+    Name: "Salaries",
+    Type: "OVERHEADS",
+    Class: "EXPENSE",
+  },
+  {
+    AccountID: "aaaaaaaa-0000-4000-8000-000000000003",
+    Name: "Software",
+    Type: "OVERHEADS",
+    Class: "EXPENSE",
+  },
+]
+const pnlRow = (a: (typeof ACCOUNTS)[number], value: string) => ({
+  RowType: "Row",
+  Cells: [
+    { Value: a.Name, Attributes: [{ Id: "account", Value: a.AccountID }] },
+    { Value: value, Attributes: [{ Id: "account", Value: a.AccountID }] },
+  ],
+})
+
 type Call = {
   path: string
   page: string | null
@@ -52,6 +84,7 @@ let invoicePages: Record<number, unknown[]> = {}
 
 function mockXero() {
   calls = []
+  resetThrottle()
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: string | URL, init?: RequestInit) => {
@@ -78,6 +111,30 @@ function mockXero() {
           Invoices:
             invoicePages[Number(url.searchParams.get("page") ?? 1)] ?? [],
         },
+        Accounts: { Accounts: ACCOUNTS },
+        // Same figures every month: sales 1000, salaries 400, software 100.
+        "Reports/ProfitAndLoss": {
+          Reports: [
+            {
+              ReportID: "ProfitAndLoss",
+              Rows: [
+                {
+                  RowType: "Section",
+                  Title: "Income",
+                  Rows: [pnlRow(ACCOUNTS[0], "1000.00")],
+                },
+                {
+                  RowType: "Section",
+                  Title: "Less Operating Expenses",
+                  Rows: [
+                    pnlRow(ACCOUNTS[1], "400.00"),
+                    pnlRow(ACCOUNTS[2], "100.00"),
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       }
       const key = path === "Organisation" ? "Organisation" : path
       return Response.json(body[key] ?? { [path]: [] })
@@ -87,7 +144,7 @@ function mockXero() {
 
 beforeEach(async () => {
   await db.execute(
-    sql`truncate xero_connection, sync_cursor, sync_run, xero_invoice, xero_invoice_line, xero_organisation restart identity cascade`
+    sql`truncate xero_connection, sync_cursor, sync_run, xero_invoice, xero_invoice_line, xero_organisation, xero_account, account_group, xero_pnl_line, xero_report_snapshot, settings restart identity cascade`
   )
   const key = parseKey(env.TOKEN_ENCRYPTION_KEY!)
   await db.insert(xeroConnection).values({
@@ -190,5 +247,54 @@ describe("runSync", () => {
       runSync("manual", 60_000),
     ])
     expect([a.status, b.status].sort()).toEqual(["busy", "done"])
+  })
+
+  it("builds the monthly P&L from report lines and default account groups", async () => {
+    await db.insert(settings).values({ key: "ct_set_aside_rate", value: 0.25 })
+    const result = await runSync("manual", 60_000)
+    expect(result.status).toBe("done")
+
+    const months = await db.select().from(vPnlMonthly)
+    expect(months).toHaveLength(13)
+    expect(
+      calls.filter((c) => c.path === "Reports/ProfitAndLoss")
+    ).toHaveLength(13)
+    for (const m of months) {
+      expect(m).toMatchObject({
+        sales: "1000.00",
+        peopleCosts: "400.00",
+        otherCosts: "100.00",
+        profit: "500.00",
+        margin: "0.5000",
+        ctSetAside: "250.00",
+      })
+      expect(m.asOf).not.toBeNull()
+    }
+
+    // Fresh snapshots are not re-fetched on the next run.
+    mockXero()
+    await runSync("cron", 60_000)
+    expect(
+      calls.filter((c) => c.path === "Reports/ProfitAndLoss")
+    ).toHaveLength(0)
+  })
+
+  it("keeps a director's manual account group through re-syncs", async () => {
+    await runSync("manual", 60_000)
+    await db
+      .update(accountGroup)
+      .set({ group: "other", source: "manual" })
+      .where(eq(accountGroup.accountId, ACCOUNTS[1].AccountID))
+    await db
+      .update(syncCursor)
+      .set({ modifiedSince: null })
+      .where(eq(syncCursor.resource, "accounts"))
+    mockXero()
+    await runSync("cron", 60_000)
+    const [g] = await db
+      .select()
+      .from(accountGroup)
+      .where(eq(accountGroup.accountId, ACCOUNTS[1].AccountID))
+    expect(g).toMatchObject({ group: "other", source: "manual" })
   })
 })

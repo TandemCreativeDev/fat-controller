@@ -14,6 +14,8 @@ import type { z } from "zod"
 
 import { db, pool } from "@/db"
 import {
+  accountGroup,
+  settings,
   syncCursor,
   syncRun,
   xeroAccount,
@@ -26,8 +28,10 @@ import {
   xeroOrganisation,
   xeroPayment,
 } from "@/db/schema"
+import { defaultGroup, fyStartFromYearEnd } from "@/lib/pnl"
 import { xeroGet, XeroApiError } from "./client"
 import * as rec from "./records"
+import { syncPnlReports } from "./reports"
 import { XeroAuthError } from "./tokens"
 
 const PAGE_SIZE = 100
@@ -79,13 +83,26 @@ export const RESOURCES = [
     paged: false,
     incremental: false,
     schema: rec.organisationSchema,
-    save: (tx, rs) =>
-      upsert(
-        tx,
-        xeroOrganisation,
-        xeroOrganisation.organisationId,
-        rs.map(rec.mapOrganisation)
-      ),
+    save: async (tx, rs) => {
+      const orgs = rs.map(rec.mapOrganisation)
+      await upsert(tx, xeroOrganisation, xeroOrganisation.organisationId, orgs)
+      // Take the financial year from Xero unless a director has set it by hand.
+      const org = orgs[0]
+      if (org?.financialYearEndDay && org.financialYearEndMonth) {
+        const value = fyStartFromYearEnd(
+          org.financialYearEndDay,
+          org.financialYearEndMonth
+        )
+        await tx
+          .insert(settings)
+          .values({ key: "financial_year_start", value })
+          .onConflictDoUpdate({
+            target: settings.key,
+            set: { value },
+            setWhere: sql`${settings.updatedBy} is null`,
+          })
+      }
+    },
   }),
   resource({
     name: "accounts",
@@ -94,8 +111,26 @@ export const RESOURCES = [
     paged: false,
     incremental: true,
     schema: rec.accountSchema,
-    save: (tx, rs) =>
-      upsert(tx, xeroAccount, xeroAccount.accountId, rs.map(rec.mapAccount)),
+    save: async (tx, rs) => {
+      const accounts = rs.map(rec.mapAccount)
+      await upsert(tx, xeroAccount, xeroAccount.accountId, accounts)
+      if (accounts.length === 0) return
+      // Auto-group new accounts; re-group renamed ones unless a director chose the group.
+      await tx
+        .insert(accountGroup)
+        .values(
+          accounts.map((a) => ({
+            accountId: a.accountId,
+            group: defaultGroup({ class: a.class ?? null, name: a.name }),
+            source: "auto" as const,
+          }))
+        )
+        .onConflictDoUpdate({
+          target: accountGroup.accountId,
+          set: { group: sql.raw(`excluded."group"`) },
+          setWhere: sql`${accountGroup.source} = 'auto'`,
+        })
+    },
   }),
   resource({
     name: "contacts",
@@ -189,7 +224,7 @@ export const RESOURCES = [
   }),
 ]
 
-type StepResult = {
+export type StepResult = {
   resource: string
   rows: number
   calls: number
@@ -324,9 +359,19 @@ export async function runSync(
         )
           break
       }
+      const stopped = steps.some(
+        (s) => s.error && /token|not connected|daily API limit/i.test(s.error)
+      )
+      if (
+        !stopped &&
+        steps.length === RESOURCES.length &&
+        Date.now() < deadline
+      ) {
+        steps.push(await syncPnlReports(trigger, deadline))
+      }
       const failed = steps.some((s) => s.error)
       const allComplete =
-        steps.length === RESOURCES.length && steps.every((s) => s.complete)
+        steps.length === RESOURCES.length + 1 && steps.every((s) => s.complete)
       return {
         status: failed ? "failed" : allComplete ? "done" : "partial",
         steps,
