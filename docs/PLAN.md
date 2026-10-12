@@ -2,7 +2,7 @@
 
 ## Where we are
 
-**2026-10-12.** Local: sign-in, settings, Xero connect + daily-style sync, and the monthly P&L home screen all work on Tandem's real data. Production paused by request. Next: account-group mapping UI, then Clients and Tax & take-home.
+**2026-10-12.** Local: sign-in, settings, Xero connect + daily-style sync, and the monthly P&L home screen all work on Tandem's real data. Production paused by request. Clients screen done. Next: account-group mapping UI, then Tax & take-home.
 
 **Open questions:** see the spec's _Open questions_; the dividend method parameters and how projects are tagged in Xero block M2/M3 detail, not M1.
 
@@ -42,7 +42,7 @@
 - [x] P&L engine: monthly report snapshots → grouped rows (pure, fixture-tested)
 - [x] `v_pnl_monthly`; home screen table + sales vs people chart; as-of time
 - [ ] Links from figures to the Xero records behind them
-- [ ] Clients screen: `v_revenue_by_client_month`, days to pay, outstanding
+- [x] Clients screen: `v_sales_document`, `v_revenue_by_client_month`, `v_client_summary` (FY and last FY, shares, received, outstanding, days to pay, monthly grid, links to Xero contacts)
 - [ ] Take-home engine (needs the dividend method parameters) + Tax & take-home screen; checked against the last two manual calculations
 
 ## M3: Depth
