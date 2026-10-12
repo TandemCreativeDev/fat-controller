@@ -4,6 +4,7 @@ import {
   defaultGroup,
   fyStartFromYearEnd,
   lastMonths,
+  monthsSince,
   withRolling3,
 } from "./pnl"
 
@@ -75,5 +76,21 @@ describe("withRolling3", () => {
 
   it("leaves the current month out", () => {
     expect(out[4]).toMatchObject({ salesAvg3: null, profitAvg3: null })
+  })
+})
+
+describe("monthsSince", () => {
+  const today = new Date("2026-10-12T00:00:00Z")
+  it("runs from the first month to today's month", () => {
+    const m = monthsSince("2025-08-29", today)
+    expect(m).toHaveLength(15)
+    expect(m[0]).toEqual({ start: "2025-08-01", end: "2025-08-31" })
+    expect(m[14].start).toBe("2026-10-01")
+  })
+  it("is just this month with no data or a future first month", () => {
+    expect(monthsSince(null, today)).toEqual([
+      { start: "2026-10-01", end: "2026-10-31" },
+    ])
+    expect(monthsSince("2027-01-01", today)).toHaveLength(1)
   })
 })

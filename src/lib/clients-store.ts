@@ -9,7 +9,7 @@ import {
   vRevenueByClientMonth,
   xeroContact,
 } from "@/db/schema"
-import { lastMonths, londonToday } from "@/lib/pnl"
+import { getLifetimeMonths } from "@/lib/pnl-store"
 
 const n = (v: string | null) => (v === null ? null : Number(v))
 
@@ -38,9 +38,9 @@ export async function getClientSummary() {
   }))
 }
 
-/** Invoiced per client for the last 12 months plus this month, as a client → month → amount grid. */
+/** Invoiced per client for every month since records began, as a client → month → amount grid. */
 export async function getClientMonthGrid() {
-  const months = lastMonths(londonToday(), 13).map((m) => m.start)
+  const months = (await getLifetimeMonths()).map((m) => m.start)
   const rows = await db
     .select({
       contactId: vRevenueByClientMonth.contactId,

@@ -52,6 +52,22 @@ const input: AnalysisPackInput = {
       amount: 400,
     },
   ],
+  takeHomeMonthly: [
+    {
+      month: "2026-07-01",
+      director: "Director One",
+      salary: 1000,
+      dividends: 3000.1,
+      total: 4000.1,
+    },
+    {
+      month: "2026-09-01",
+      director: "Director One",
+      salary: 1047.5,
+      dividends: 2000.2,
+      total: 3047.7,
+    },
+  ],
   takeHome: [
     {
       director: "Director One",
@@ -82,6 +98,21 @@ describe("buildAnalysisPack", () => {
     expect(md).toContain(
       "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n| 2026-09 | 1000.00 | 400.00 | 100.00 | 500.00 | 50.0 | 900.00 |  |"
     )
+  })
+
+  it("covers every month and ends the P&L with a lifetime total", () => {
+    expect(md).toContain("lifetime: every month since records began")
+    expect(md).toContain(
+      "| Lifetime | 1000.00 | 400.00 | 100.00 | 500.00 | 50.0 |  |  |"
+    )
+  })
+
+  it("lists take-home by month and totals it per director", () => {
+    expect(md).toContain(
+      "| 2026-07 | Director One | 1000.00 | 3000.10 | 4000.10 |"
+    )
+    const lifetime = md.split("## Take-home lifetime")[1].split("##")[0]
+    expect(lifetime).toContain("| Director One | 2047.50 | 5000.30 | 7047.80 |")
   })
 
   it("escapes pipes in cell text", () => {

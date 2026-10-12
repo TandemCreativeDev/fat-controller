@@ -71,7 +71,9 @@ export default async function HomePage() {
   const current = months[months.length - 1]
   const lastFull = full[full.length - 1]
   const avg3 = (n: number | null) => (n === null ? "–" : formatGbp(n))
-  const totals = full.reduce(
+  const since = formatMonth(months[0].month)
+  // Lifetime: every month since records began, including this month to date.
+  const totals = months.reduce(
     (t, m) => ({
       sales: t.sales + m.sales,
       peopleCosts: t.peopleCosts + m.peopleCosts,
@@ -119,15 +121,20 @@ export default async function HomePage() {
 
       <StatRow>
         <StatTile
-          label="Sales · last 12 months"
+          label={`Sales · since ${since}`}
           value={formatGbp(totals.sales)}
-          sub={`excluding VAT · 3-month avg ${avg3(lastFull?.salesAvg3 ?? null)}`}
+          sub="excluding VAT"
         />
         <StatTile
-          label="Profit · last 12 months"
+          label={`Profit · since ${since}`}
           value={formatGbp(totals.profit)}
-          sub={`${formatPercent(totals.sales ? totals.profit / totals.sales : null)} margin · 3-month avg ${avg3(lastFull?.profitAvg3 ?? null)}`}
+          sub={`${formatPercent(totals.sales ? totals.profit / totals.sales : null)} margin`}
           accent
+        />
+        <StatTile
+          label="Sales · 3-month average"
+          value={avg3(lastFull?.salesAvg3 ?? null)}
+          sub={`profit ${avg3(lastFull?.profitAvg3 ?? null)} · complete months`}
         />
         <StatTile
           label={`${short(current.month)} to date`}
@@ -140,7 +147,7 @@ export default async function HomePage() {
         <CardHeader>
           <CardTitle>Sales and costs</CardTitle>
           <CardDescription>
-            Last 12 months and this month to date
+            Since {since}, including this month to date
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -189,9 +196,7 @@ export default async function HomePage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Where the money goes</CardTitle>
-            <CardDescription>
-              Costs by account, last 12 full months
-            </CardDescription>
+            <CardDescription>Costs by account since {since}</CardDescription>
           </CardHeader>
           <CardContent>
             <ShareDonut centerLabel="costs" slices={costSlices} />
@@ -252,7 +257,7 @@ export default async function HomePage() {
             </TableBody>
             <TableFooter>
               <TableRow>
-                <TableCell>Last 12 full months</TableCell>
+                <TableCell>Since {since}</TableCell>
                 <TableCell className="text-right">
                   {money(totals.sales)}
                 </TableCell>

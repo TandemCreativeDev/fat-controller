@@ -50,6 +50,23 @@ export function lastMonths(
   return out
 }
 
+/**
+ * Every month from `first` ("YYYY-MM-DD", any day in the month) to `today`'s
+ * month, oldest first; just today's month if `first` is null or later.
+ */
+export function monthsSince(
+  first: string | null,
+  today: Date
+): { start: string; end: string }[] {
+  const f = first ? new Date(`${first.slice(0, 7)}-01T00:00:00Z`) : today
+  const count =
+    (today.getUTCFullYear() - f.getUTCFullYear()) * 12 +
+    today.getUTCMonth() -
+    f.getUTCMonth() +
+    1
+  return lastMonths(today, Math.max(1, count))
+}
+
 /** Today's date in London, as a UTC-midnight Date for month arithmetic. */
 export function londonToday(now = new Date()): Date {
   const ymd = new Intl.DateTimeFormat("en-CA", {

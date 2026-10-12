@@ -4,7 +4,7 @@ import { asc, sql } from "drizzle-orm"
 
 import { db } from "@/db"
 import { vPnlMonthly } from "@/db/schema"
-import { lastMonths, londonToday, withRolling3 } from "@/lib/pnl"
+import { lastMonths, londonToday, monthsSince, withRolling3 } from "@/lib/pnl"
 
 export type PnlMonth = {
   month: string
@@ -38,8 +38,16 @@ export async function getPnlMonthly(): Promise<PnlMonth[]> {
   return withRolling3(months, current.start)
 }
 
+/** Every month since the first with P&L activity, to this month. */
+export async function getLifetimeMonths() {
+  const [r] = await db
+    .select({ first: sql<string | null>`min(${vPnlMonthly.month})::text` })
+    .from(vPnlMonthly)
+  return monthsSince(r?.first ?? null, londonToday())
+}
+
 /**
- * Income and expense accounts with activity in the shown period that land in
+ * Income and expense accounts with activity that land in
  * no column, so the totals would miss them.
  */
 export async function getUngroupedPnlAccounts() {
@@ -50,7 +58,6 @@ export async function getUngroupedPnlAccounts() {
     left join account_group g on g.account_id = l.account_id
     where a.class in ('REVENUE', 'EXPENSE')
       and (g.account_id is null or g."group" = 'exclude')
-      and l.date >= date_trunc('month', now() at time zone 'Europe/London') - interval '12 months'
     group by a.name
     having sum(l.credit) <> 0
     order by 1
@@ -58,7 +65,7 @@ export async function getUngroupedPnlAccounts() {
   return res.rows
 }
 
-/** Costs by account over the last 12 full months, for the cost-mix chart. */
+/** Costs by account since records began, for the cost-mix chart. */
 export async function getCostsByAccount() {
   const res = await db.execute<{
     account_id: string
@@ -70,8 +77,6 @@ export async function getCostsByAccount() {
     from v_ledger_line l
     join account_group g on g.account_id = l.account_id and g."group" in ('people', 'other')
     join xero_account a on a.account_id = l.account_id
-    where l.date >= date_trunc('month', now() at time zone 'Europe/London') - interval '12 months'
-      and l.date < date_trunc('month', now() at time zone 'Europe/London')
     group by 1, 2, 3
     having sum(l.credit) <> 0
   `)

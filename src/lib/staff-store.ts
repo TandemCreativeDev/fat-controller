@@ -4,21 +4,20 @@ import { gte } from "drizzle-orm"
 
 import { db } from "@/db"
 import { vStaffPayMonthly } from "@/db/schema"
-import { lastMonths, londonToday } from "@/lib/pnl"
-import { getPnlMonthly } from "@/lib/pnl-store"
+import { getLifetimeMonths, getPnlMonthly } from "@/lib/pnl-store"
 
 export type StaffMember = {
   key: string
   name: string
   byMonth: Record<string, number>
-  /** Last 12 full months (excludes the current month). */
-  total12: number
+  /** Since records began, including this month to date. */
+  total: number
   firstPaid: string | null
   lastPaid: string | null
 }
 
 export async function getStaffPay() {
-  const months = lastMonths(londonToday(), 13).map((m) => m.start)
+  const months = (await getLifetimeMonths()).map((m) => m.start)
   const current = months[months.length - 1]
   const [rows, pnl] = await Promise.all([
     db
@@ -35,13 +34,13 @@ export async function getStaffPay() {
       key,
       name: r.name,
       byMonth: {},
-      total12: 0,
+      total: 0,
       firstPaid: null,
       lastPaid: null,
     }
     const amount = Number(r.amount)
     p.byMonth[r.month] = (p.byMonth[r.month] ?? 0) + amount
-    if (r.month !== current) p.total12 += amount
+    p.total += amount
     if (amount !== 0) {
       if (!p.firstPaid || r.month < p.firstPaid) p.firstPaid = r.month
       if (!p.lastPaid || r.month > p.lastPaid) p.lastPaid = r.month

@@ -54,12 +54,15 @@ export default async function StaffPage() {
   }
 
   const full = monthly.slice(0, -1)
-  const total12 = full.reduce((t, m) => t + m.total, 0)
-  const sales12 = full.reduce((t, m) => t + m.sales, 0)
-  const lastMonth = full[full.length - 1]
+  const since = formatMonth(months[0])
+  const totalAll = monthly.reduce((t, m) => t + m.total, 0)
+  const salesAll = monthly.reduce((t, m) => t + m.sales, 0)
+  const lastMonth = full[full.length - 1] ?? monthly[0]
   const thisMonth = monthly[monthly.length - 1]
   const paidMonths = full.filter((m) => m.total > 0)
-  const avgMonthly = paidMonths.length ? total12 / paidMonths.length : 0
+  const avgMonthly = paidMonths.length
+    ? paidMonths.reduce((t, m) => t + m.total, 0) / paidMonths.length
+    : 0
   const series = staff.map((p) => ({ key: p.key, label: p.name }))
 
   return (
@@ -72,9 +75,9 @@ export default async function StaffPage() {
 
       <StatRow>
         <StatTile
-          label="Last 12 months"
-          value={formatGbp(total12)}
-          sub={`${formatPercent(sales12 ? total12 / sales12 : null)} of sales`}
+          label={`Since ${since}`}
+          value={formatGbp(totalAll)}
+          sub={`${formatPercent(salesAll ? totalAll / salesAll : null)} of sales`}
           accent
         />
         <StatTile
@@ -90,7 +93,7 @@ export default async function StaffPage() {
         <StatTile
           label="Average month"
           value={formatGbp(avgMonthly)}
-          sub={`over ${paidMonths.length} months with pay`}
+          sub={`over ${paidMonths.length} full months with pay`}
         />
       </StatRow>
 
@@ -99,7 +102,7 @@ export default async function StaffPage() {
           <CardHeader>
             <CardTitle>Monthly pay by person</CardTitle>
             <CardDescription>
-              Last 12 months and this month to date
+              Since {since}, including this month to date
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -118,15 +121,15 @@ export default async function StaffPage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Share of staff cost</CardTitle>
-            <CardDescription>Last 12 full months</CardDescription>
+            <CardDescription>Since {since}</CardDescription>
           </CardHeader>
           <CardContent>
             <ShareDonut
-              centerLabel="12 months"
+              centerLabel="lifetime"
               slices={staff.map((p) => ({
                 key: p.key,
                 label: p.name,
-                value: p.total12,
+                value: p.total,
               }))}
             />
           </CardContent>
@@ -167,7 +170,7 @@ export default async function StaffPage() {
                     {short(m)}
                   </TableHead>
                 ))}
-                <TableHead className="text-right">12 months</TableHead>
+                <TableHead className="text-right">Total</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -187,7 +190,7 @@ export default async function StaffPage() {
                     </TableCell>
                   ))}
                   <TableCell className="text-right font-medium">
-                    {money(p.total12)}
+                    {money(p.total)}
                   </TableCell>
                 </TableRow>
               ))}
@@ -200,7 +203,7 @@ export default async function StaffPage() {
                     {money(m.total)}
                   </TableCell>
                 ))}
-                <TableCell className="text-right">{money(total12)}</TableCell>
+                <TableCell className="text-right">{money(totalAll)}</TableCell>
               </TableRow>
             </TableFooter>
           </Table>

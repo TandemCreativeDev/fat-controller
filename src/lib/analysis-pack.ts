@@ -44,6 +44,14 @@ export type AnalysisPackInput = {
     outstanding: number
   }[]
   costs: { month: string; account: string; group: string; amount: number }[]
+  /** Every month since records began, one row per director per month with pay. */
+  takeHomeMonthly: {
+    month: string
+    director: string
+    salary: number
+    dividends: number
+    total: number
+  }[]
   takeHome: {
     director: string
     salary: number
@@ -64,6 +72,9 @@ export type AnalysisPackInput = {
 
 const gbp = (n: number) => n.toFixed(2)
 const gbpOrBlank = (n: number | null) => (n === null ? "" : gbp(n))
+/** Sum 2dp amounts in pennies so totals don't pick up float drift. */
+const sum = (ns: number[]) =>
+  ns.reduce((t, n) => t + Math.round(n * 100), 0) / 100
 const pct = (n: number | null) => (n === null ? "" : (n * 100).toFixed(1))
 const ym = (iso: string) => iso.slice(0, 7)
 const cell = (v: string | number | null) =>
@@ -98,6 +109,21 @@ export function csv(
   return [headers, ...rows].map((r) => r.map(q).join(",")).join("\n")
 }
 
+function lifetimePnlRow(pnl: AnalysisPackInput["pnl"]) {
+  const sales = sum(pnl.map((m) => m.sales))
+  const profit = sum(pnl.map((m) => m.profit))
+  return [
+    "Lifetime",
+    gbp(sales),
+    gbp(sum(pnl.map((m) => m.peopleCosts))),
+    gbp(sum(pnl.map((m) => m.otherCosts))),
+    gbp(profit),
+    pct(sales ? profit / sales : null),
+    "",
+    "",
+  ]
+}
+
 export function buildAnalysisPack(d: AnalysisPackInput): string {
   const out: string[] = []
   const date = (x: Date | null) =>
@@ -109,7 +135,7 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
       "## Context",
       "",
       `- **Company:** ${d.company} (UK limited company)`,
-      `- **Period:** ${ym(d.period.from)} to ${ym(d.period.to)} (the last 12 full months plus the current month to date; the current month is incomplete)`,
+      `- **Period:** ${ym(d.period.from)} to ${ym(d.period.to)} (lifetime: every month since records began, plus the current month to date; the current month is incomplete)`,
       `- **Currency:** GBP. Every amount column is in pounds sterling, two decimal places, no currency symbol.`,
       `- **Main measure:** Sales invoiced, by invoice date. The company invoices as soon as work is done, so invoice date measures work delivered. Cash received is secondary and has its own section at the end.`,
       `- **VAT:** Sales, Invoiced and cost figures **exclude VAT**. Cash received and Outstanding are the amounts clients actually paid or still owe.`,
@@ -130,7 +156,7 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
   )
 
   out.push(
-    "## Monthly P&L\n\nOne row per month.\n\n" +
+    "## Monthly P&L\n\nOne row per month, then the lifetime total.\n\n" +
       markdownTable(
         [
           "Month (YYYY-MM)",
@@ -142,16 +168,18 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
           "Sales 3-month avg (GBP)",
           "Profit 3-month avg (GBP)",
         ],
-        d.pnl.map((m) => [
-          ym(m.month),
-          gbp(m.sales),
-          gbp(m.peopleCosts),
-          gbp(m.otherCosts),
-          gbp(m.profit),
-          pct(m.margin),
-          gbpOrBlank(m.salesAvg3),
-          gbpOrBlank(m.profitAvg3),
-        ])
+        d.pnl
+          .map((m) => [
+            ym(m.month),
+            gbp(m.sales),
+            gbp(m.peopleCosts),
+            gbp(m.otherCosts),
+            gbp(m.profit),
+            pct(m.margin),
+            gbpOrBlank(m.salesAvg3),
+            gbpOrBlank(m.profitAvg3),
+          ])
+          .concat([lifetimePnlRow(d.pnl)])
       )
   )
 
@@ -212,6 +240,48 @@ export function buildAnalysisPack(d: AnalysisPackInput): string {
       markdownTable(
         ["Month (YYYY-MM)", "Account", "Group", "Amount (GBP, ex VAT)"],
         d.costs.map((c) => [ym(c.month), c.account, c.group, gbp(c.amount)])
+      )
+  )
+
+  out.push(
+    "## Take-home by month\n\nWhat each director was paid each month since records began: salary (Directors' Remuneration) plus dividends paid, before personal income tax and dividend tax.\n\n" +
+      markdownTable(
+        [
+          "Month (YYYY-MM)",
+          "Director",
+          "Salary (GBP)",
+          "Dividends (GBP)",
+          "Total paid (GBP, before personal tax)",
+        ],
+        d.takeHomeMonthly.map((t) => [
+          ym(t.month),
+          t.director,
+          gbp(t.salary),
+          gbp(t.dividends),
+          gbp(t.total),
+        ])
+      )
+  )
+
+  const directors = [...new Set(d.takeHomeMonthly.map((t) => t.director))]
+  out.push(
+    "## Take-home lifetime\n\nThe months above, totalled per director.\n\n" +
+      markdownTable(
+        [
+          "Director",
+          "Salary (GBP)",
+          "Dividends (GBP)",
+          "Total paid (GBP, before personal tax)",
+        ],
+        directors.map((name) => {
+          const rows = d.takeHomeMonthly.filter((t) => t.director === name)
+          return [
+            name,
+            gbp(sum(rows.map((t) => t.salary))),
+            gbp(sum(rows.map((t) => t.dividends))),
+            gbp(sum(rows.map((t) => t.total))),
+          ]
+        })
       )
   )
 

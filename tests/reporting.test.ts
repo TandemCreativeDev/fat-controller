@@ -6,6 +6,7 @@ import {
   settings,
   vAgedDebtors,
   vCurrentFy,
+  vTakeHomeMonthly,
   vTakeHomeYtd,
   xeroAccount,
   xeroBankTransaction,
@@ -145,5 +146,16 @@ describe("reporting views", () => {
         totalGbp: "3500.00",
       },
     ])
+  })
+
+  it("v_take_home_monthly keeps every month, including before this FY", async () => {
+    const rows = await db.select().from(vTakeHomeMonthly)
+    const total = (k: "salaryGbp" | "dividendsGbp") =>
+      rows.reduce((t, r) => t + Number(r[k]), 0)
+    expect(total("salaryGbp")).toBe(1000)
+    expect(total("dividendsGbp")).toBe(12499)
+    const early = rows.find((r) => r.month === `${daysAgo(40).slice(0, 7)}-01`)
+    expect(Number(early?.dividendsGbp)).toBeGreaterThanOrEqual(9999)
+    expect(rows.every((r) => r.director === "Director One")).toBe(true)
   })
 })

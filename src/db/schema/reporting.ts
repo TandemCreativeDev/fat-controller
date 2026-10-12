@@ -92,3 +92,30 @@ export const vTakeHomeYtd = pgView("v_take_home_ytd", {
     )
   group by 1, 2, 3
 `)
+
+/**
+ * What each director has been paid in each month, since records began: salary
+ * and dividends picked out as in v_take_home_ytd. Before personal tax.
+ */
+export const vTakeHomeMonthly = pgView("v_take_home_monthly", {
+  contactId: uuid("contact_id"),
+  director: text("director").notNull(),
+  month: date("month").notNull(),
+  salaryGbp: money("salary_gbp").notNull(),
+  dividendsGbp: money("dividends_gbp").notNull(),
+  totalGbp: money("total_gbp").notNull(),
+}).as(sql`
+  select
+    l.contact_id,
+    coalesce(c.name, 'Unassigned') as director,
+    date_trunc('month', l.date)::date as month,
+    coalesce(-sum(l.credit) filter (where a.class = 'EXPENSE'), 0)::numeric(14, 2) as salary_gbp,
+    coalesce(-sum(l.credit) filter (where a.class = 'EQUITY'), 0)::numeric(14, 2) as dividends_gbp,
+    (-sum(l.credit))::numeric(14, 2) as total_gbp
+  from v_ledger_line l
+  join xero_account a on a.account_id = l.account_id
+  left join xero_contact c on c.contact_id = l.contact_id
+  where (a.class = 'EXPENSE' and a.name ~* 'director')
+    or (a.class = 'EQUITY' and a.name ~* 'dividend')
+  group by 1, 2, 3
+`)

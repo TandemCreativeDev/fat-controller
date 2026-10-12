@@ -72,6 +72,7 @@ export default async function ClientsPage() {
   }
 
   const fyStart = summary[0].fyStart
+  const since = formatMonth(grid.months[0])
   const sum = (f: (r: (typeof summary)[number]) => number) =>
     summary.reduce((t, r) => t + f(r), 0)
   const monthTotals = grid.months.map((m) =>
@@ -119,7 +120,7 @@ export default async function ClientsPage() {
           sub={`${summary.filter((r) => r.outstanding > 0).length} clients owe us`}
         />
         <StatTile
-          label="Biggest client · 12 months"
+          label="Biggest client · lifetime"
           value={topClient ? formatPercent(topShare) : "–"}
           sub={topClient ? `${topClient.name} share of invoicing` : undefined}
         />
@@ -130,7 +131,7 @@ export default async function ClientsPage() {
           <CardHeader>
             <CardTitle>Invoiced by client</CardTitle>
             <CardDescription>
-              Last 12 months and this month to date, excluding VAT
+              Since {since}, including this month to date, excluding VAT
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -155,9 +156,7 @@ export default async function ClientsPage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Share of revenue</CardTitle>
-            <CardDescription>
-              Invoiced over the last 12 months and this month
-            </CardDescription>
+            <CardDescription>Invoiced since {since}</CardDescription>
           </CardHeader>
           <CardContent>
             <ShareDonut
@@ -286,7 +285,7 @@ export default async function ClientsPage() {
         <CardHeader>
           <CardTitle>Invoiced by month</CardTitle>
           <CardDescription>
-            Last 12 months and this month to date, excluding VAT
+            Since {since}, including this month to date, excluding VAT
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -165,7 +165,8 @@ afterAll(() => pool.end())
 describe("v_pnl_monthly from transactions", () => {
   it("nets invoices, bills, credit notes, bank lines and journals into the month", async () => {
     const months = await db.select().from(vPnlMonthly)
-    expect(months).toHaveLength(13)
+    // Starts at the first month with P&L activity: here, only this month.
+    expect(months).toHaveLength(1)
     expect(months.at(-1)).toMatchObject({
       month: day("01"),
       sales: "1100.00", // 1000 + 150 − 50
@@ -175,6 +176,5 @@ describe("v_pnl_monthly from transactions", () => {
       margin: "0.4545",
       ctSetAside: "220.00",
     })
-    expect(months.slice(0, -1).every((m) => m.sales === "0.00")).toBe(true)
   })
 })

@@ -51,8 +51,8 @@ export const xeroPnlLine = pgTable(
 )
 
 /**
- * The home screen: last 12 months plus the current month to date (London time),
- * built from v_ledger_line (our synced transactions), grouped by account_group.
+ * The home screen: every month from the first with P&L activity to the current
+ * month to date (London time), built from v_ledger_line (our synced transactions), grouped by account_group.
  * as_of is when the transaction resources last finished syncing.
  */
 export const vPnlMonthly = pgView("v_pnl_monthly", {
@@ -65,12 +65,27 @@ export const vPnlMonthly = pgView("v_pnl_monthly", {
   ctSetAside: money("ct_set_aside").notNull(),
   asOf: timestamp("as_of", { withTimezone: true }),
 }).as(sql`
-  with months as (
-    select generate_series(
-      date_trunc('month', now() at time zone 'Europe/London') - interval '12 months',
-      date_trunc('month', now() at time zone 'Europe/London'),
-      interval '1 month'
-    )::date as month
+  with this_month as (
+    select date_trunc('month', now() at time zone 'Europe/London')::date as m
+  ),
+  first_month as (
+    select least(
+      coalesce(
+        (
+          select date_trunc('month', min(l.date))::date
+          from v_ledger_line l
+          join account_group g on g.account_id = l.account_id
+          where g."group" in ('sales', 'people', 'other')
+        ),
+        t.m
+      ),
+      t.m
+    ) as m
+    from this_month t
+  ),
+  months as (
+    select generate_series(f.m, t.m, interval '1 month')::date as month
+    from first_month f cross join this_month t
   ),
   rate as (
     select coalesce(

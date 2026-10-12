@@ -6,13 +6,13 @@ import { db } from "@/db"
 import {
   vAgedDebtors,
   vCurrentFy,
+  vTakeHomeMonthly,
   vTakeHomeYtd,
   xeroOrganisation,
 } from "@/db/schema"
 import type { AnalysisPackInput } from "@/lib/analysis-pack"
-import { lastMonths, londonToday } from "@/lib/pnl"
 import { getClientSummary } from "@/lib/clients-store"
-import { getPnlMonthly } from "@/lib/pnl-store"
+import { getLifetimeMonths, getPnlMonthly } from "@/lib/pnl-store"
 
 const GROUP_LABEL = { people: "People costs", other: "Other costs" } as const
 
@@ -20,7 +20,7 @@ const GROUP_LABEL = { people: "People costs", other: "Other costs" } as const
 export async function getAnalysisPackInput(
   includeLines: boolean
 ): Promise<AnalysisPackInput> {
-  const months = lastMonths(londonToday(), 13)
+  const months = await getLifetimeMonths()
   const from = months[0].start
   const to = months[months.length - 1].end
 
@@ -82,6 +82,10 @@ export async function getAnalysisPackInput(
     .select()
     .from(vAgedDebtors)
     .orderBy(asc(vAgedDebtors.client), asc(vAgedDebtors.dueDate))
+  const takeHomeMonthly = await db
+    .select()
+    .from(vTakeHomeMonthly)
+    .orderBy(asc(vTakeHomeMonthly.month), asc(vTakeHomeMonthly.director))
   const takeHome = await db
     .select()
     .from(vTakeHomeYtd)
@@ -148,6 +152,13 @@ export async function getAnalysisPackInput(
       account: c.account,
       group: GROUP_LABEL[c.group],
       amount: Number(c.amount),
+    })),
+    takeHomeMonthly: takeHomeMonthly.map((t) => ({
+      month: t.month,
+      director: t.director,
+      salary: Number(t.salaryGbp),
+      dividends: Number(t.dividendsGbp),
+      total: Number(t.totalGbp),
     })),
     takeHome: takeHome.map((t) => ({
       director: t.director,
