@@ -16,7 +16,7 @@ pnpm db:generate    # migration from schema changes
 pnpm db:migrate     # apply migrations (unpooled URL)
 pnpm db:seed        # idempotent: directors from env, default settings
 pnpm dev
-pnpm gates          # typecheck, lint, test, build → PASS or FAIL: <step>
+pnpm gates          # typecheck, lint, test, build → PASS or FAIL: <step> (needs Docker up: db tests use fat_controller_test)
 ```
 
 ## Layers

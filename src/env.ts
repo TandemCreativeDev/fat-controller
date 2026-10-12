@@ -1,10 +1,20 @@
 import { z } from "zod"
 
+// Blank values in a copied .env.example count as unset.
+const optional = <T extends z.ZodType>(schema: T) =>
+  z.preprocess((v) => (v === "" ? undefined : v), schema.optional())
+
 // Server-side environment, validated once at import. Never read process.env elsewhere.
 const schema = z.object({
   DATABASE_URL: z.url(),
   BETTER_AUTH_SECRET: z.string().min(32),
-  BETTER_AUTH_URL: z.url().optional(),
+  BETTER_AUTH_URL: optional(z.url()),
+  // Xero integration (M1). Optional so the app runs before Xero is set up;
+  // code that needs them goes through xeroConfig() in src/lib/xero/config.ts.
+  XERO_CLIENT_ID: optional(z.string().min(1)),
+  XERO_CLIENT_SECRET: optional(z.string().min(1)),
+  TOKEN_ENCRYPTION_KEY: optional(z.string().min(1)),
+  CRON_SECRET: optional(z.string().min(16)),
   // Vercel system variables (absent locally).
   VERCEL: z.string().optional(),
   VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),

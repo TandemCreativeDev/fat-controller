@@ -44,7 +44,11 @@ export function PasswordForm() {
   }
 
   return (
-    <form method="post" onSubmit={onSubmit} className="flex max-w-md flex-col gap-4">
+    <form
+      method="post"
+      onSubmit={onSubmit}
+      className="flex max-w-md flex-col gap-4"
+    >
       <div className="flex flex-col gap-2">
         <Label htmlFor="currentPassword">Current password</Label>
         <Input
