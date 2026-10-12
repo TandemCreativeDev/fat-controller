@@ -69,6 +69,8 @@ export default async function HomePage() {
 
   const full = months.slice(0, -1)
   const current = months[months.length - 1]
+  const lastFull = full[full.length - 1]
+  const avg3 = (n: number | null) => (n === null ? "–" : formatGbp(n))
   const totals = full.reduce(
     (t, m) => ({
       sales: t.sales + m.sales,
@@ -120,12 +122,12 @@ export default async function HomePage() {
         <StatTile
           label="Sales · last 12 months"
           value={formatGbp(totals.sales)}
-          sub="excluding VAT"
+          sub={`excluding VAT · 3-month avg ${avg3(lastFull?.salesAvg3 ?? null)}`}
         />
         <StatTile
           label="Profit · last 12 months"
           value={formatGbp(totals.profit)}
-          sub={`${formatPercent(totals.sales ? totals.profit / totals.sales : null)} margin`}
+          sub={`${formatPercent(totals.sales ? totals.profit / totals.sales : null)} margin · 3-month avg ${avg3(lastFull?.profitAvg3 ?? null)}`}
           accent
         />
         <StatTile
@@ -168,17 +170,23 @@ export default async function HomePage() {
         <Card className="lg:col-span-3">
           <CardHeader>
             <CardTitle>Profit by month</CardTitle>
-            <CardDescription>Sales minus all costs</CardDescription>
+            <CardDescription>
+              Sales minus all costs, with the 3-month average of complete months
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <TrendLine
               area
               format="gbp"
               className="h-56"
-              series={[{ key: "profit", label: "Profit" }]}
+              series={[
+                { key: "profit", label: "Profit" },
+                { key: "profitAvg3", label: "3-month average" },
+              ]}
               data={months.map((m) => ({
                 label: short(m.month),
                 profit: m.profit,
+                profitAvg3: m.profitAvg3,
               }))}
             />
           </CardContent>
@@ -210,6 +218,8 @@ export default async function HomePage() {
                 <TableHead className="text-right">Other costs</TableHead>
                 <TableHead className="text-right">Profit</TableHead>
                 <TableHead className="text-right">Margin</TableHead>
+                <TableHead className="text-right">Sales 3-mo avg</TableHead>
+                <TableHead className="text-right">Profit 3-mo avg</TableHead>
                 <TableHead className="text-right">CT set-aside</TableHead>
               </TableRow>
             </TableHeader>
@@ -238,6 +248,12 @@ export default async function HomePage() {
                     {formatPercent(m.margin)}
                   </TableCell>
                   <TableCell className="text-right">
+                    {m.salesAvg3 === null ? "–" : money(m.salesAvg3)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {m.profitAvg3 === null ? "–" : money(m.profitAvg3)}
+                  </TableCell>
+                  <TableCell className="text-right">
                     {money(m.ctSetAside)}
                   </TableCell>
                 </TableRow>
@@ -263,6 +279,8 @@ export default async function HomePage() {
                     totals.sales ? totals.profit / totals.sales : null
                   )}
                 </TableCell>
+                <TableCell />
+                <TableCell />
                 <TableCell className="text-right">
                   {money(totals.ctSetAside)}
                 </TableCell>

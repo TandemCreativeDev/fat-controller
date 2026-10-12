@@ -4,6 +4,7 @@ import { asc, sql } from "drizzle-orm"
 
 import { db } from "@/db"
 import { vPnlMonthly } from "@/db/schema"
+import { lastMonths, londonToday, withRolling3 } from "@/lib/pnl"
 
 export type PnlMonth = {
   month: string
@@ -13,6 +14,9 @@ export type PnlMonth = {
   profit: number
   margin: number | null
   ctSetAside: number
+  /** Rolling 3-month averages over complete months; null for the current month. */
+  salesAvg3: number | null
+  profitAvg3: number | null
   asOf: Date | null
 }
 
@@ -22,7 +26,8 @@ export async function getPnlMonthly(): Promise<PnlMonth[]> {
     .select()
     .from(vPnlMonthly)
     .orderBy(asc(vPnlMonthly.month))
-  return rows.map((r) => ({
+  const [current] = lastMonths(londonToday(), 1)
+  const months = rows.map((r) => ({
     month: r.month,
     sales: Number(r.sales),
     peopleCosts: Number(r.peopleCosts),
@@ -32,6 +37,7 @@ export async function getPnlMonthly(): Promise<PnlMonth[]> {
     ctSetAside: Number(r.ctSetAside),
     asOf: r.asOf,
   }))
+  return withRolling3(months, current.start)
 }
 
 /**

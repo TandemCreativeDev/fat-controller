@@ -67,3 +67,31 @@ export function fyStartFromYearEnd(
   const next = new Date(Date.UTC(2000, month - 1, day + 1))
   return { month: next.getUTCMonth() + 1, day: next.getUTCDate() }
 }
+
+// ------------------------------------------------------------------ averages
+
+/**
+ * Adds a rolling 3-month average of Sales and Profit to consecutive months
+ * (oldest first): the month and the two before it. Months on or after
+ * `currentMonth` are incomplete, so they get null and never feed an average;
+ * so do months without two complete months before them in the list.
+ */
+export function withRolling3<
+  T extends { month: string; sales: number; profit: number },
+>(
+  months: T[],
+  currentMonth: string
+): (T & { salesAvg3: number | null; profitAvg3: number | null })[] {
+  // Average in pennies so 2dp inputs don't pick up float drift.
+  const avg = (vals: number[]) =>
+    Math.round(vals.reduce((t, v) => t + Math.round(v * 100), 0) / 3) / 100
+  return months.map((m, i) => {
+    const window = months.slice(i - 2, i + 1)
+    const ok = i >= 2 && m.month < currentMonth
+    return {
+      ...m,
+      salesAvg3: ok ? avg(window.map((w) => w.sales)) : null,
+      profitAvg3: ok ? avg(window.map((w) => w.profit)) : null,
+    }
+  })
+}

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest"
 
-import { defaultGroup, fyStartFromYearEnd, lastMonths } from "./pnl"
+import {
+  defaultGroup,
+  fyStartFromYearEnd,
+  lastMonths,
+  withRolling3,
+} from "./pnl"
 
 describe("defaultGroup", () => {
   it.each([
@@ -45,5 +50,30 @@ describe("fyStartFromYearEnd", () => {
   })
   it("31 December → 1 January", () => {
     expect(fyStartFromYearEnd(31, 12)).toEqual({ month: 1, day: 1 })
+  })
+})
+
+describe("withRolling3", () => {
+  const months = [
+    { month: "2026-06-01", sales: 100, profit: 10 },
+    { month: "2026-07-01", sales: 200, profit: -20 },
+    { month: "2026-08-01", sales: 300.01, profit: 30 },
+    { month: "2026-09-01", sales: 400, profit: 40.1 },
+    { month: "2026-10-01", sales: 5, profit: 5 },
+  ]
+  const out = withRolling3(months, "2026-10-01")
+
+  it("is null until three complete months are available", () => {
+    expect(out[0].salesAvg3).toBeNull()
+    expect(out[1].profitAvg3).toBeNull()
+  })
+
+  it("averages the month and the two before it, to the penny", () => {
+    expect(out[2]).toMatchObject({ salesAvg3: 200, profitAvg3: 6.67 })
+    expect(out[3]).toMatchObject({ salesAvg3: 300, profitAvg3: 16.7 })
+  })
+
+  it("leaves the current month out", () => {
+    expect(out[4]).toMatchObject({ salesAvg3: null, profitAvg3: null })
   })
 })
