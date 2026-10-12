@@ -83,6 +83,14 @@ export async function XeroCard({
               Redirect URI registered in your Xero app must be exactly{" "}
               <code>{xeroRedirectUri()}</code>
             </p>
+            <p className="text-xs text-muted-foreground">
+              If Xero shows an <code>invalid_scope</code> error (report scopes
+              not available to this app),{" "}
+              <a href="/api/xero/connect?scopes=core" className="underline">
+                connect without report access
+              </a>
+              .
+            </p>
           </div>
         )}
 
