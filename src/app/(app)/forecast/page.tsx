@@ -97,7 +97,7 @@ function Setup({ setup }: { setup: ForecastPageData["setup"] }) {
     {
       done: setup.startDateSet,
       text: "Set the forecast start date.",
-      href: "/settings",
+      href: "/settings/rules",
     },
   ]
   return (

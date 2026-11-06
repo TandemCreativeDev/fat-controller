@@ -1,9 +1,7 @@
 import { asc } from "drizzle-orm"
-import Link from "next/link"
 
 import { ActionForm } from "@/components/action-form"
 import { SelectField } from "@/components/form-fields"
-import { PageHeader } from "@/components/page-header"
 import {
   Card,
   CardContent,
@@ -11,14 +9,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { db } from "@/db"
 import { accountGroup, xeroAccount } from "@/db/schema"
 import { londonDate } from "@/lib/forecast"
@@ -27,12 +17,21 @@ import { formatDay, formatPence } from "@/lib/format"
 import { requireDirector } from "@/lib/session"
 import { getSettings } from "@/lib/settings-store"
 import { saveAccountGroups, saveBankRoles } from "../forecast-actions"
+import { FormSection } from "../form-section"
 
 const GROUPS = [
   { value: "sales", label: "Sales" },
   { value: "people", label: "People" },
   { value: "other", label: "Other" },
   { value: "exclude", label: "Exclude" },
+]
+
+const CLASSES = [
+  { value: "REVENUE", label: "Income" },
+  { value: "EXPENSE", label: "Expenses" },
+  { value: "ASSET", label: "Assets" },
+  { value: "LIABILITY", label: "Liabilities" },
+  { value: "EQUITY", label: "Equity" },
 ]
 
 export default async function AccountsPage() {
@@ -49,98 +48,94 @@ export default async function AccountsPage() {
   const uncounted = hasOperating
     ? await uncountedSpend(settings, londonDate(new Date()))
     : []
+  const known = new Set(CLASSES.map((c) => c.value))
+  const pAndL = accounts.filter((a) => a.type !== "BANK")
+  const sections = [
+    ...CLASSES.map((c) => ({
+      label: c.label,
+      rows: pAndL.filter((a) => a.class === c.value),
+    })),
+    {
+      label: "Other",
+      rows: pAndL.filter((a) => !a.class || !known.has(a.class)),
+    },
+  ].filter((c) => c.rows.length > 0)
 
   return (
-    <div className="flex max-w-4xl flex-col gap-8">
-      <PageHeader
-        title="Accounts"
-        lede="Bank account roles, spend missing from the P&L, and account groups."
-        note={
-          <Link href="/settings" className="underline">
-            Back to Settings
-          </Link>
-        }
-      />
+    <div className="flex flex-col gap-4">
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Bank accounts</CardTitle>
+            <CardDescription>
+              The forecast uses operating accounts only. The tax reserve is
+              shown beside any shortfall, but never counted as cash to pay out.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {bankAccounts.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No bank accounts yet. Run a sync from Connections.
+              </p>
+            ) : (
+              <ActionForm action={saveBankRoles} submit="Save roles">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {bankAccounts.map((a) => (
+                    <SelectField
+                      key={a.accountId}
+                      name={`role:${a.accountId}`}
+                      label={a.name}
+                      defaultValue={roles[a.accountId] ?? ""}
+                      options={[
+                        { value: "", label: "Not used" },
+                        { value: "operating", label: "Operating" },
+                        { value: "tax_reserve", label: "Tax reserve" },
+                      ]}
+                    />
+                  ))}
+                </div>
+              </ActionForm>
+            )}
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Bank accounts</CardTitle>
-          <CardDescription>
-            The forecast uses operating accounts only. The tax reserve is shown
-            beside any shortfall, but never counted as cash to pay out.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {bankAccounts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No bank accounts yet. Run a sync from Settings.
-            </p>
-          ) : (
-            <ActionForm action={saveBankRoles} submit="Save roles">
-              <div className="grid gap-3 sm:grid-cols-2">
-                {bankAccounts.map((a) => (
-                  <SelectField
-                    key={a.accountId}
-                    name={`role:${a.accountId}`}
-                    label={a.name}
-                    defaultValue={roles[a.accountId] ?? ""}
-                    options={[
-                      { value: "", label: "Not used" },
-                      { value: "operating", label: "Operating" },
-                      { value: "tax_reserve", label: "Tax reserve" },
-                    ]}
-                  />
-                ))}
-              </div>
-            </ActionForm>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Spend missing from the P&amp;L</CardTitle>
-          <CardDescription>
-            Operating-account spend in the last 12 months coded to an account
-            grouped as Exclude. Transfers and dividends to a director are left
-            out.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {!hasOperating ? (
-            <p className="text-sm text-muted-foreground">
-              Tag an operating account above to run this check.
-            </p>
-          ) : uncounted.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nothing to check.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Account</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+        <Card>
+          <CardHeader>
+            <CardTitle>Spend missing from the P&amp;L</CardTitle>
+            <CardDescription>
+              Operating-account spend in the last 12 months coded to an account
+              grouped as Exclude. Transfers and dividends to a director are left
+              out.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!hasOperating ? (
+              <p className="text-sm text-muted-foreground">
+                Tag an operating account above to run this check.
+              </p>
+            ) : uncounted.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nothing to check.</p>
+            ) : (
+              <ul className="flex flex-col divide-y divide-border/60">
                 {uncounted.map((l, i) => (
-                  <TableRow key={`${l.date}-${i}`}>
-                    <TableCell className="whitespace-nowrap">
-                      {formatDay(l.date)}
-                    </TableCell>
-                    <TableCell>{l.contact}</TableCell>
-                    <TableCell>{l.account}</TableCell>
-                    <TableCell className="text-right tabular-nums">
+                  <li
+                    key={`${l.date}-${i}`}
+                    className="grid grid-cols-[1fr_auto] gap-x-3 py-2 text-sm"
+                  >
+                    <span className="font-medium">{l.contact}</span>
+                    <span className="font-mono tabular-nums">
                       {formatPence(l.amount)}
-                    </TableCell>
-                  </TableRow>
+                    </span>
+                    <span className="col-span-2 text-xs text-muted-foreground">
+                      {l.account} · {formatDay(l.date)}
+                    </span>
+                  </li>
                 ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Card>
         <CardHeader>
@@ -152,24 +147,29 @@ export default async function AccountsPage() {
         </CardHeader>
         <CardContent>
           <ActionForm action={saveAccountGroups} submit="Save groups">
-            <div className="grid gap-3 sm:grid-cols-2">
-              {accounts
-                .filter((a) => a.type !== "BANK")
-                .map((a) => {
-                  const g = groupOf.get(a.accountId)
-                  return (
-                    <SelectField
-                      key={a.accountId}
-                      name={`group:${a.accountId}`}
-                      label={a.name}
-                      hint={
-                        g?.source === "manual" ? "Set by a director" : undefined
-                      }
-                      defaultValue={g?.group ?? "exclude"}
-                      options={GROUPS}
-                    />
-                  )
-                })}
+            <div className="grid items-start gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+              {sections.map((c) => (
+                <FormSection
+                  key={c.label}
+                  title={`${c.label} (${c.rows.length})`}
+                >
+                  {c.rows.map((a) => {
+                    const g = groupOf.get(a.accountId)
+                    return (
+                      <SelectField
+                        key={a.accountId}
+                        name={`group:${a.accountId}`}
+                        label={
+                          g?.source === "manual" ? `${a.name} (manual)` : a.name
+                        }
+                        className="grid grid-cols-[1fr_7rem] items-center gap-3"
+                        defaultValue={g?.group ?? "exclude"}
+                        options={GROUPS}
+                      />
+                    )
+                  })}
+                </FormSection>
+              ))}
             </div>
           </ActionForm>
         </CardContent>
