@@ -10,6 +10,7 @@ const nav = [
   { href: "/", label: "P&L", periodic: true },
   { href: "/clients", label: "Clients", periodic: true },
   { href: "/staff", label: "Staff", periodic: true },
+  { href: "/forecast", label: "Forecast", periodic: false },
   { href: "/settings", label: "Settings", periodic: false },
 ]
 

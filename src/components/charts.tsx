@@ -303,3 +303,98 @@ export function ShareDonut({
     </div>
   )
 }
+
+/**
+ * Cash in the bank each day: solid to today, dashed after. Steps rather than
+ * curves, because a balance jumps when money moves; a smooth line would invent
+ * balances that never existed.
+ */
+export function BalanceLine({
+  data,
+  today,
+  className,
+}: {
+  data: {
+    date: string
+    label: string
+    actual: number | null
+    forecast: number | null
+  }[]
+  today: string
+  className?: string
+}) {
+  const config: ChartConfig = {
+    actual: { label: "Actual", color: SERIES_COLORS[0] },
+    forecast: { label: "Forecast", color: SERIES_COLORS[0] },
+  }
+  const labelFor = new Map(data.map((d) => [d.date, d.label]))
+  return (
+    <ChartContainer config={config} className={cn("h-64 w-full", className)}>
+      <LineChart data={data} margin={{ left: 4, right: 8, top: 16 }}>
+        <CartesianGrid vertical={false} stroke="rgb(255 255 255 / 0.06)" />
+        <XAxis
+          dataKey="date"
+          {...axisProps}
+          minTickGap={48}
+          tickFormatter={(d: string) => labelFor.get(d) ?? d}
+        />
+        <YAxis
+          {...axisProps}
+          width={64}
+          tickFormatter={(v: number) => formatGbp(v)}
+        />
+        <ReferenceLine y={0} stroke="rgb(255 255 255 / 0.2)" />
+        <ReferenceLine
+          x={today}
+          stroke="rgb(255 255 255 / 0.35)"
+          strokeDasharray="2 3"
+          label={{
+            value: "Today",
+            position: "top",
+            fill: "var(--muted-foreground)",
+            fontSize: 11,
+          }}
+        />
+        <ChartTooltip
+          cursor={{ stroke: "rgb(255 255 255 / 0.25)" }}
+          content={
+            <ChartTooltipContent
+              labelFormatter={(_, payload) => {
+                const date = payload?.[0]?.payload?.date as string | undefined
+                return date ? (labelFor.get(date) ?? date) : ""
+              }}
+              formatter={(value, name) => (
+                <div className="flex w-full items-center justify-between gap-4">
+                  <span className="text-muted-foreground">
+                    {config[String(name)]?.label ?? name}
+                  </span>
+                  <span className="font-medium text-foreground tabular-nums">
+                    {formatGbp(Number(value))}
+                  </span>
+                </div>
+              )}
+            />
+          }
+        />
+        <Line
+          type="stepAfter"
+          dataKey="actual"
+          stroke="var(--color-actual)"
+          strokeWidth={2}
+          dot={false}
+          isAnimationActive={false}
+        />
+        <Line
+          type="stepAfter"
+          dataKey="forecast"
+          stroke="var(--color-forecast)"
+          strokeWidth={2}
+          strokeDasharray="5 4"
+          dot={false}
+          activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--background)" }}
+          isAnimationActive={false}
+        />
+      </LineChart>
+    </ChartContainer>
+  )
+}
