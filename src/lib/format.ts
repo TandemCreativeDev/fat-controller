@@ -32,3 +32,34 @@ export function formatAsOf(d: Date | null): string {
       })
     : "never"
 }
+
+const gbpPence = new Intl.NumberFormat("en-GB", {
+  style: "currency",
+  currency: "GBP",
+})
+
+/** "1234.5" → "£1,234.50", for the forecast's exact figures. For display only. */
+export function formatPence(amount: string): string {
+  return gbpPence.format(Number(amount))
+}
+
+/** "2026-06-05" → "5 Jun 2026" */
+export function formatDay(isoDate: string): string {
+  const [y, m, d] = isoDate.split("-").map(Number)
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  })
+}
+
+/** "2026-06-05" → "5 Jun" */
+export function formatDayShort(isoDate: string): string {
+  const [y, m, d] = isoDate.split("-").map(Number)
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  })
+}

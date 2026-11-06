@@ -15,6 +15,10 @@ const schema = z.object({
   XERO_CLIENT_SECRET: optional(z.string().min(1)),
   TOKEN_ENCRYPTION_KEY: optional(z.string().min(1)),
   CRON_SECRET: optional(z.string().min(16)),
+  // Solidtime (forecast). Optional so the app runs before it is set up.
+  SOLIDTIME_API_URL: optional(z.url()),
+  SOLIDTIME_API_TOKEN: optional(z.string().min(1)),
+  SOLIDTIME_ORGANIZATION_ID: optional(z.string().min(1)),
   // Vercel system variables (absent locally).
   VERCEL: z.string().optional(),
   VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),

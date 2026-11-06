@@ -227,7 +227,7 @@ describe("runSync", () => {
       [ACCOUNTS[1].AccountID]: "people",
       [ACCOUNTS[2].AccountID]: "other",
     })
-    expect(calls.some((c) => c.path.startsWith("Reports"))).toBe(false)
+    expect(calls.some((c) => c.path.includes("ProfitAndLoss"))).toBe(false)
   })
 
   it("keeps a director's manual account group through re-syncs", async () => {

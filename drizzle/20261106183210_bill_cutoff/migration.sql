@@ -1,0 +1,1 @@
+ALTER TABLE "person" ADD COLUMN "bill_cutoff_days" integer DEFAULT 7 NOT NULL;

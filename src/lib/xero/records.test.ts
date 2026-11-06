@@ -7,6 +7,7 @@ import {
   mapInvoice,
   mapPayment,
   maxUpdated,
+  parseBankSummary,
   paymentSchema,
 } from "./records"
 
@@ -160,5 +161,62 @@ describe("maxUpdated", () => {
   })
   it("returns null for an empty page", () => {
     expect(maxUpdated([])).toBeNull()
+  })
+})
+
+describe("parseBankSummary", () => {
+  const cell = (Value: string, accountID?: string) => ({
+    Value,
+    ...(accountID
+      ? { Attributes: [{ Id: "accountID", Value: accountID }] }
+      : {}),
+  })
+  const report = {
+    Reports: [
+      {
+        Rows: [
+          {
+            RowType: "Header",
+            Cells: [
+              { Value: "Bank Accounts" },
+              { Value: "Opening Balance" },
+              { Value: "Cash Received" },
+              { Value: "Cash Spent" },
+              { Value: "Closing Balance" },
+            ],
+          },
+          {
+            RowType: "Section",
+            Rows: [
+              {
+                RowType: "Row",
+                Cells: [
+                  cell("Current", "acc-1"),
+                  cell("1,000.50", "acc-1"),
+                  cell("20.00", "acc-1"),
+                  cell("5.00", "acc-1"),
+                  cell("1,015.50", "acc-1"),
+                ],
+              },
+              {
+                RowType: "SummaryRow",
+                Cells: [{ Value: "Total" }, { Value: "1,000.50" }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+
+  it("reads balances by the account ID attribute", () => {
+    expect(parseBankSummary(report)).toEqual([
+      { accountId: "acc-1", opening: "1000.50", closing: "1015.50" },
+    ])
+  })
+
+  it("returns nothing for an unexpected body", () => {
+    expect(parseBankSummary({ nope: true })).toEqual([])
+    expect(parseBankSummary(null)).toEqual([])
   })
 })

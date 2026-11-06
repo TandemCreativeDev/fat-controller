@@ -3,6 +3,7 @@ import { z } from "zod"
 import type {
   xeroAccount,
   xeroBankTransaction,
+  xeroBankTransfer,
   xeroContact,
   xeroCreditNote,
   xeroInvoice,
@@ -158,6 +159,18 @@ export const manualJournalSchema = z.looseObject({
   UpdatedDateUTC: str,
 })
 
+export const bankTransferSchema = z.looseObject({
+  BankTransferID: z.string(),
+  Date: str,
+  DateString: str,
+  Amount: num,
+  FromBankAccount: ref("AccountID"),
+  ToBankAccount: ref("AccountID"),
+  FromBankTransactionID: str,
+  ToBankTransactionID: str,
+  Status: str,
+})
+
 // ------------------------------------------------------------------ mappers
 
 type Row<T extends { $inferInsert: unknown }> = T["$inferInsert"]
@@ -309,6 +322,22 @@ export function mapBankTransaction(
   }
 }
 
+export function mapBankTransfer(
+  t: z.infer<typeof bankTransferSchema>
+): Row<typeof xeroBankTransfer> {
+  return {
+    bankTransferId: t.BankTransferID,
+    date: pickDate(t.DateString, t.Date),
+    fromAccountId: t.FromBankAccount?.AccountID ?? null,
+    toAccountId: t.ToBankAccount?.AccountID ?? null,
+    amount: money(t.Amount),
+    fromBankTransactionId: t.FromBankTransactionID ?? null,
+    toBankTransactionId: t.ToBankTransactionID ?? null,
+    status: t.Status ?? null,
+    raw: t,
+  }
+}
+
 export function mapManualJournal(
   m: z.infer<typeof manualJournalSchema>
 ): Row<typeof xeroManualJournal> {
@@ -333,4 +362,74 @@ export function maxUpdated(
     if (!max || d > max) max = d
   }
   return max
+}
+
+// ------------------------------------------------------------------ Bank Summary
+
+const reportCell = z.looseObject({
+  Value: z.string().nullish(),
+  Attributes: z
+    .array(z.looseObject({ Id: z.string().nullish(), Value: str }))
+    .nullish(),
+})
+type ReportRow = {
+  RowType?: string | null
+  Cells?: z.infer<typeof reportCell>[] | null
+  Rows?: ReportRow[] | null
+}
+const reportRow: z.ZodType<ReportRow> = z.lazy(() =>
+  z.looseObject({
+    RowType: str,
+    Cells: z.array(reportCell).nullish(),
+    Rows: z.array(reportRow).nullish(),
+  })
+)
+const bankSummarySchema = z.looseObject({
+  Reports: z.array(z.looseObject({ Rows: z.array(reportRow).nullish() })),
+})
+
+export type BankSummaryRow = {
+  accountId: string
+  opening: string
+  closing: string
+}
+
+/**
+ * Pull each account's opening and closing balance from a Bank Summary report.
+ * Rows are identified by the `accountID` cell attribute, never by name. Columns
+ * are found from the header, in case Xero reorders them.
+ */
+export function parseBankSummary(body: unknown): BankSummaryRow[] {
+  const parsed = bankSummarySchema.safeParse(body)
+  if (!parsed.success) return []
+  const rows = parsed.data.Reports[0]?.Rows ?? []
+  const header = rows.find((r) => r.RowType === "Header")?.Cells ?? []
+  const column = (name: RegExp, fallback: number) => {
+    const i = header.findIndex((c) => name.test(c.Value ?? ""))
+    return i >= 0 ? i : fallback
+  }
+  const openingCol = column(/opening/i, 1)
+  const closingCol = column(/closing/i, 4)
+
+  const flatten = (list: ReportRow[]): ReportRow[] =>
+    list.flatMap((r) => [r, ...flatten(r.Rows ?? [])])
+  const out: BankSummaryRow[] = []
+  for (const row of flatten(rows)) {
+    if (row.RowType !== "Row") continue
+    const cells = row.Cells ?? []
+    const accountId = cells
+      .flatMap((c) => c.Attributes ?? [])
+      .find((a) => a.Id?.toLowerCase() === "accountid")?.Value
+    if (!accountId) continue
+    const amount = (i: number) => {
+      const n = Number((cells[i]?.Value ?? "0").replace(/,/g, ""))
+      return Number.isFinite(n) ? n.toFixed(2) : "0.00"
+    }
+    out.push({
+      accountId,
+      opening: amount(openingCol),
+      closing: amount(closingCol),
+    })
+  }
+  return out
 }

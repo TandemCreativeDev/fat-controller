@@ -12,6 +12,7 @@ const COUNTED_TABLES = [
   ["Credit notes", "xero_credit_note"],
   ["Payments", "xero_payment"],
   ["Bank transactions", "xero_bank_transaction"],
+  ["Bank transfers", "xero_bank_transfer"],
   ["Manual journals", "xero_manual_journal"],
 ] as const
 

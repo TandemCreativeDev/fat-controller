@@ -4,9 +4,10 @@ import { resolveSettings, settingDefinitions } from "./settings"
 
 describe("resolveSettings", () => {
   it("returns defaults when nothing is stored", () => {
-    expect(resolveSettings([])).toEqual({
-      financial_year_start: { month: 4, day: 1 },
-    })
+    const s = resolveSettings([])
+    expect(s.financial_year_start).toEqual({ month: 4, day: 1 })
+    expect(s.ct_set_aside_rate).toBe(0.2)
+    expect(s.forecast_start_date).toBeNull()
   })
 
   it("uses stored values that pass their schema", () => {

@@ -20,6 +20,7 @@ import {
   syncRun,
   xeroAccount,
   xeroBankTransaction,
+  xeroBankTransfer,
   xeroContact,
   xeroCreditNote,
   xeroInvoice,
@@ -32,6 +33,7 @@ import { defaultGroup, fyStartFromYearEnd } from "@/lib/pnl"
 import { xeroGet, XeroApiError } from "./client"
 import * as rec from "./records"
 import { ensureAccountGroups } from "./account-groups"
+import { runForecastSteps } from "@/lib/forecast-sync"
 import { XeroAuthError } from "./tokens"
 
 const PAGE_SIZE = 100
@@ -208,6 +210,23 @@ export const RESOURCES = [
       ),
   }),
   resource({
+    // Only this says where a transfer went; the bank transactions carry one side each.
+    name: "bank_transfers",
+    path: "BankTransfers",
+    key: "BankTransfers",
+    paged: false,
+    incremental: true,
+    params: { includeDeleted: true },
+    schema: rec.bankTransferSchema,
+    save: (tx, rs) =>
+      upsert(
+        tx,
+        xeroBankTransfer,
+        xeroBankTransfer.bankTransferId,
+        rs.map(rec.mapBankTransfer)
+      ),
+  }),
+  resource({
     name: "manual_journals",
     path: "ManualJournals",
     key: "ManualJournals",
@@ -230,6 +249,8 @@ export type StepResult = {
   calls: number
   complete: boolean
   error?: string
+  /** It failed, but the run still counts as successful. */
+  soft?: boolean
 }
 
 async function syncResource(
@@ -360,9 +381,16 @@ export async function runSync(
           break
       }
       await ensureAccountGroups()
-      const failed = steps.some((s) => s.error)
+      const xeroFailed = steps.some((s) => s.error)
       const allComplete =
         steps.length === RESOURCES.length && steps.every((s) => s.complete)
+      // Everything the forecast adds runs once Xero has nothing more to page through.
+      const extra =
+        allComplete || xeroFailed
+          ? await runForecastSteps(trigger, { xeroUpToDate: !xeroFailed })
+          : []
+      steps.push(...extra)
+      const failed = steps.some((s) => s.error && !s.soft)
       return {
         status: failed ? "failed" : allComplete ? "done" : "partial",
         steps,

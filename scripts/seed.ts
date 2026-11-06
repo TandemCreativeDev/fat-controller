@@ -66,10 +66,13 @@ async function main() {
   const inserted = await db
     .insert(settings)
     .values(
-      settingKeys.map((key) => ({
-        key,
-        value: settingDefinitions[key].default,
-      }))
+      settingKeys
+        // A null default means "not set", which is stored as no row.
+        .filter((key) => settingDefinitions[key].default !== null)
+        .map((key) => ({
+          key,
+          value: settingDefinitions[key].default,
+        }))
     )
     .onConflictDoNothing()
     .returning({ key: settings.key })

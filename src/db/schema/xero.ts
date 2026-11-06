@@ -213,6 +213,25 @@ export const xeroBankTransaction = pgTable(
   (t) => [index("xero_bank_transaction_date_idx").on(t.date)]
 )
 
+export const xeroBankTransfer = pgTable(
+  "xero_bank_transfer",
+  {
+    bankTransferId: uuid("bank_transfer_id").primaryKey(),
+    date: date("date"),
+    fromAccountId: uuid("from_account_id"),
+    toAccountId: uuid("to_account_id"),
+    amount: money("amount"),
+    fromBankTransactionId: uuid("from_bank_transaction_id"),
+    toBankTransactionId: uuid("to_bank_transaction_id"),
+    status: text("status"),
+    raw: jsonb("raw").notNull(),
+  },
+  (t) => [
+    index("xero_bank_transfer_from_idx").on(t.fromBankTransactionId),
+    index("xero_bank_transfer_to_idx").on(t.toBankTransactionId),
+  ]
+)
+
 export const xeroManualJournal = pgTable("xero_manual_journal", {
   manualJournalId: uuid("manual_journal_id").primaryKey(),
   date: date("date"),
