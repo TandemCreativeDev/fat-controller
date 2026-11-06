@@ -1,12 +1,19 @@
 import { markdownTable } from "@/lib/analysis-pack"
-import type {
-  AccuracyRow,
-  ForecastResult,
-  ForecastSettings,
-  MonthBreakdown,
+import {
+  accuracySummary,
+  type AccuracyRow,
+  type ForecastResult,
+  type ForecastSettings,
+  type MonthBreakdown,
 } from "@/lib/forecast"
 
-import { inOutMonths } from "@/lib/forecast-views"
+import { payoutBuckets } from "@/lib/forecast-buckets"
+import {
+  billBuckets,
+  inOutMonths,
+  overviewBuckets,
+  timelineView,
+} from "@/lib/forecast-views"
 
 /**
  * The forecast as one Markdown file an LLM can read without guessing: the rules
@@ -28,6 +35,7 @@ export type ForecastPackInput = {
     code: string | null
     name: string
     kind: string
+    endDate: string | null
     chargeRate: string | null
     intervalDays: number
     termsDays: number
@@ -100,6 +108,7 @@ export function buildForecastPack(d: ForecastPackInput): string {
       `- **Take-home:** on the last working day of each month the main account is emptied into a director payout, split equally, apart from a £${settings.bufferGbp} buffer, VAT owed, set-asides not yet moved, and any hold-back.`,
       "- **Hold-back:** kept from a month's payout when next month's contractor bills couldn't otherwise be paid by their due dates.",
       `- **VAT:** ${settings.vatRegisteredFrom ? `registered from ${settings.vatRegisteredFrom}, at ${percent(settings.vatRate)}.` : "not registered."}`,
+      `- **Director salary:** ${settings.directorSalaryGbp} a month each, paid inside the month-end payout. There are ${result.directorCount} directors.`,
       `- **Running costs:** forecast at ${result.runningCostAverage} a month, the average of the last three complete months.`,
       "- **Tracking start:** " + settings.startDate + ".",
       "",
@@ -117,19 +126,71 @@ export function buildForecastPack(d: ForecastPackInput): string {
       )
   )
 
+  const plain = (v: string) => v
   out.push(
-    "## Money in and out, before dividends\n\nBank movements for past months, forecast for later ones. Leaves out dividends, the month-end payout and transfers, apart from tax set-asides. Future salaries come from the salary setting.\n\n" +
-      markdownTable(
-        ["Month", "Basis", "Money in", "Money out", "Left", "From tax reserve"],
-        inOutMonths(result, (v) => v).map((m) => [
-          m.month.slice(0, 7),
-          m.basis,
-          m.moneyInTotal,
-          m.moneyOutTotal,
-          m.left,
-          m.fromReserve,
-        ])
-      )
+    "## Take-home by month\n\nEach month as a sum: money in, less money out, gives what's left from the month. Adding what comes from the bank (opening less closing balance; negative means kept in the bank) gives the payout, shared between the directors. The payout includes salary and dividends.\n\n" +
+      overviewBuckets(result, plain)
+        .map((b) =>
+          [
+            `### ${b.month.slice(0, 7)}, payout ${b.payoutDate}`,
+            "",
+            markdownTable(
+              ["Section", "Line", "Amount"],
+              [
+                ...b.moneyIn.map((r) => ["Money in", r.label, r.amount]),
+                ["Money in", "Total", b.moneyInTotal],
+                ...b.moneyOut.map((r) => ["Money out", r.label, r.amount]),
+                ["Money out", "Total", b.moneyOutTotal],
+                ["Result", "Left from the month", b.left],
+                ["Result", "From the bank", b.fromBank],
+                ["Result", "Payout, all directors", b.payout],
+                ["Result", "Take-home per director", b.takeHome],
+                ["Result", "Leaves in the bank", b.closing],
+                ...(b.holdBack
+                  ? [
+                      [
+                        "Result",
+                        `Held back${b.holdBack.personName ? ` for ${b.holdBack.personName}'s bill due ${b.holdBack.dueOn}` : ""}`,
+                        b.holdBack.amount,
+                      ],
+                    ]
+                  : []),
+                ...(b.shortfall
+                  ? [["Result", "Short next month", b.shortfall]]
+                  : []),
+                ...(b.vatOwed ? [["Result", "VAT owed", b.vatOwed]] : []),
+              ]
+            ),
+          ].join("\n")
+        )
+        .join("\n\n")
+  )
+
+  out.push(
+    "## Money in and out, before dividends\n\nBank movements for past months, forecast for later ones. Leaves out dividends, the month-end payout and transfers, apart from tax set-asides, and money moved out and back in the same month nets off. Future salaries come from the salary setting. Negative left means the month drew on money already in the bank.\n\n" +
+      inOutMonths(result, plain)
+        .map((m) =>
+          [
+            `### ${m.month.slice(0, 7)} (${m.basis})`,
+            "",
+            markdownTable(
+              ["Section", "Line", "Amount"],
+              [
+                ...m.moneyIn.map((r) => ["Money in", r.label, r.amount]),
+                ["Money in", "Total", m.moneyInTotal],
+                ...m.moneyOut.map((r) => ["Money out", r.label, r.amount]),
+                ["Money out", "Total", m.moneyOutTotal],
+                ["Result", "Left before dividends", m.left],
+                [
+                  "Result",
+                  "Moved back from the tax reserve, not counted above",
+                  m.fromReserve,
+                ],
+              ]
+            ),
+          ].join("\n")
+        )
+        .join("\n\n")
   )
 
   const reasons = result.months.filter((m) => m.holdBackReason)
@@ -207,6 +268,70 @@ export function buildForecastPack(d: ForecastPackInput): string {
       )
   )
 
+  const money = payoutBuckets(result, plain)
+  const bucketText = (title: string, b: (typeof money.months)[number]) =>
+    [
+      `### ${title}`,
+      "",
+      `- **Per director from invoices:** ${b.each} (invoice amount before VAT less set-aside, shared between directors; before contractor bills and running costs, so it isn't take-home)`,
+      `- **Invoiced in:** ${b.totalIn}, of which ${b.raised} raised and ${b.predicted} predicted${b.received !== "0.00" ? `, including ${b.received} already received` : ""}`,
+      `- **Left out:** ${b.leftOut ? `${b.leftOut.count} invoices, worth ${b.leftOut.worth} (${b.leftOut.each} per director)` : "nothing"}`,
+      "",
+      markdownTable(
+        ["Client", "Amount", "Share %", "Per director"],
+        b.segments.map((seg) => [
+          seg.label,
+          seg.amount,
+          seg.percentLabel,
+          b.clients.find((c) => c.client === seg.label)?.each ?? "",
+        ])
+      ),
+      "",
+      markdownTable(
+        [
+          "Client",
+          "Project",
+          "Invoice",
+          "Status",
+          "Counted",
+          "Amount",
+          "Per director",
+          "Due",
+          "Raise date",
+          "Work from",
+          "Basis",
+          "Note",
+        ],
+        b.clients.flatMap((c) =>
+          c.invoices.map((i) => [
+            c.client,
+            i.title,
+            i.row.invoiceNumber,
+            i.row.custom ? "one-off" : i.row.status,
+            i.row.included ? "yes" : "no",
+            i.row.amount,
+            i.each,
+            i.dueOn,
+            i.row.custom ? null : i.row.invoiceDate,
+            i.row.custom ? null : i.row.periodStart,
+            i.detail,
+            i.row.note ?? i.row.overrideNote,
+          ])
+        )
+      ),
+    ].join("\n")
+  out.push(
+    "## Money in by payout month\n\nEach invoice sits in the month its money is expected, so an overdue one is in the current month with its real due date.\n\n" +
+      [
+        ...money.months.map((b) =>
+          bucketText(`${b.month!.slice(0, 7)}, paid ${b.payoutDate}`, b)
+        ),
+        ...(money.later
+          ? [bucketText("Due after these months", money.later)]
+          : []),
+      ].join("\n\n")
+  )
+
   const first = result.months[0].month
   const last = result.timeline.at(-1)?.date ?? result.today
   out.push(
@@ -253,53 +378,95 @@ export function buildForecastPack(d: ForecastPackInput): string {
       )
   )
 
+  const bills = billBuckets(result)
+  const billRow = (c: (typeof bills.paid)[number]) => [
+    c.bill.personName,
+    c.bill.id ? "entered" : "forecast",
+    c.bill.amount,
+    c.payOn,
+    c.bill.dueOn,
+    c.late ? "yes" : "no",
+    c.bill.issuedOn,
+    c.bill.periodStart,
+    c.bill.periodEnd,
+    c.basis,
+    c.bill.status,
+    c.bill.paidAmount,
+  ]
+  const billHeaders = [
+    "Person",
+    "Kind",
+    "Amount",
+    "Pay date",
+    "Due",
+    "Late",
+    "Issued",
+    "Work from",
+    "Work to",
+    "Basis",
+    "Status",
+    "Paid amount",
+  ]
   out.push(
-    "## Contractor bills\n\n`Entered` bills are stored; `forecast` ones are calculated from tracked and forecast time.\n\n" +
-      markdownTable(
-        [
-          "Person",
-          "Issued",
-          "Period from",
-          "Period to",
-          "Amount",
-          "Due",
-          "Status",
-          "Kind",
-          "Expected to be paid",
-          "Paid on",
-          "Paid amount",
-        ],
-        result.bills.map((b) => [
-          b.personName,
-          b.issuedOn,
-          b.periodStart,
-          b.periodEnd,
-          b.amount,
-          b.dueOn,
-          b.status,
-          b.id ? "entered" : "forecast",
-          b.expectedPayOn,
-          b.paidOn,
-          b.paidAmount,
-        ])
-      )
+    "## Contractor bills\n\nBy the month each bill is paid or expected to be paid. `Entered` bills are stored; `forecast` ones are calculated from tracked and forecast time.\n\n" +
+      [
+        ...bills.months.map((b) =>
+          [
+            `### ${b.month.slice(0, 7)}: ${b.total} to contractors, ${b.count} bills`,
+            "",
+            `- **Entered:** ${b.entered}. **Forecast:** ${b.forecast}. **Already paid:** ${b.alreadyPaid}.`,
+            `- **Split:** ${b.parts.map((p) => `${p.label} ${p.amount} (${p.percentLabel}%)`).join(", ") || "none"}`,
+            `- **Balance on pay days:** ${b.danger ? `goes to ${b.danger.balance} after ${b.danger.personName} is paid on ${b.danger.date}` : "covered on every pay day"}`,
+            "",
+            markdownTable(billHeaders, b.cards.map(billRow)),
+          ].join("\n")
+        ),
+        ...(bills.later.length
+          ? [
+              "### To pay after these months\n\n" +
+                markdownTable(billHeaders, bills.later.map(billRow)),
+            ]
+          : []),
+        "### Paid bills, newest first\n\n" +
+          markdownTable(billHeaders, bills.paid.map(billRow)),
+      ].join("\n\n")
   )
 
+  const timeline = timelineView(result)
   out.push(
-    "## Timeline\n\nEvery cash event in date order, with the balance after it. Forecast daily running costs are left out to keep this readable, but their effect is in the balance, so the balance can step down between rows.\n\n" +
-      markdownTable(
-        ["Date", "Event", "Source", "Happened", "Amount", "Balance"],
-        result.timeline
-          .filter((e) => e.actual || e.type !== "running_cost")
-          .map((e) => [
-            e.date,
-            e.label,
-            e.source,
-            e.actual ? "yes" : "no",
-            e.amount,
-            e.balance,
-          ])
-      )
+    "## Timeline\n\nEvery cash event in date order, with the end-of-day balance. Forecast and tracked events haven't happened yet.\n\n" +
+      timeline.months
+        .map((m) =>
+          [
+            `### ${m.month.slice(0, 7)}: in ${m.totalIn}, out ${m.totalOut}, ends ${m.closing}, lowest ${m.lowest} on ${m.lowestOn}`,
+            "",
+            markdownTable(
+              [
+                "Date",
+                "Event",
+                "Category",
+                "Direction",
+                "Amount",
+                "Predicted",
+                "End-of-day balance",
+              ],
+              m.days.flatMap((d) =>
+                d.chips.flatMap((c) =>
+                  c.events.map((e) => [
+                    d.date,
+                    e.label,
+                    c.category,
+                    c.direction,
+                    e.amount,
+                    c.predicted ? "yes" : "no",
+                    d.balance,
+                  ])
+                )
+              )
+            ),
+          ].join("\n")
+        )
+        .join("\n\n")
   )
 
   out.push(
@@ -311,6 +478,7 @@ export function buildForecastPack(d: ForecastPackInput): string {
           "Kind",
           "Charge rate per day",
           "Invoice every (days)",
+          "End date",
           "Terms (days)",
           "Active",
           "Solidtime projects",
@@ -321,6 +489,7 @@ export function buildForecastPack(d: ForecastPackInput): string {
           p.kind,
           p.chargeRate,
           p.intervalDays,
+          p.endDate,
           p.termsDays,
           p.active ? "yes" : "no",
           p.solidtimeProjects.join(", "),
@@ -357,8 +526,9 @@ export function buildForecastPack(d: ForecastPackInput): string {
         )
     )
 
+  const accuracy = accuracySummary(d.accuracy)
   out.push(
-    "## Forecast accuracy\n\nEach raised invoice against what was forecast 14 and 7 days before its date. Blank means no forecast was recorded that early.\n\n" +
+    `## Forecast accuracy\n\nEach raised invoice against what was forecast 14 and 7 days before its date. Blank means no forecast was recorded that early. Compared so far: ${accuracy.compared}. Average miss: ${accuracy.averageMiss7 === null ? "none yet" : `${(accuracy.averageMiss7 * 100).toFixed(1)}%`} at 7 days, ${accuracy.averageMiss14 === null ? "none yet" : `${(accuracy.averageMiss14 * 100).toFixed(1)}%`} at 14 days.${accuracy.lean7 && accuracy.lean7 !== "even" ? ` Forecasts tend to run too ${accuracy.lean7 === "over" ? "high" : "low"}.` : ""}\n\n` +
       markdownTable(
         [
           "Invoice",

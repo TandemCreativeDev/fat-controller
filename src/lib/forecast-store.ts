@@ -685,6 +685,7 @@ export async function getForecastPackInput(): Promise<ForecastPackInput | null> 
       code: p.code,
       name: p.name,
       kind: p.kind,
+      endDate: p.endDate,
       chargeRate: p.chargeRateGbp,
       intervalDays: p.invoiceIntervalDays,
       termsDays: p.paymentTermsDays,

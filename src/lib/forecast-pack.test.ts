@@ -96,6 +96,7 @@ function pack(extra: Partial<ForecastPackInput> = {}) {
         code: "AAA",
         name: "Project Alpha",
         kind: "client",
+        endDate: "2026-12-31",
         chargeRate: "500.00",
         intervalDays: 14,
         termsDays: 7,
@@ -150,14 +151,44 @@ describe("buildForecastPack", () => {
     expect(section).toContain("| yes |")
   })
 
-  it("leaves forecast daily running costs out of the timeline", () => {
+  it("has everything the screens show", () => {
+    const md = pack()
+    for (const section of [
+      "## Monthly breakdown",
+      "## Take-home by month",
+      "## Money in and out, before dividends",
+      "## Money in by payout month",
+      "## Hold-backs",
+      "## Balances",
+      "## Warnings",
+      "## Expected money in",
+      "## Invoices",
+      "## Contractor bills",
+      "### Paid bills, newest first",
+      "## Timeline",
+      "## Projects",
+      "## People",
+      "## Forecast accuracy",
+    ])
+      expect(md).toContain(section)
+    expect(md).toContain("Take-home per director")
+    expect(md).toContain("Left from the month")
+    expect(md).toContain("Left before dividends")
+    expect(md).toContain("Balance on pay days")
+    expect(md).toContain("Compared so far: 0")
+    expect(md).toContain("2026-12-31")
+    expect(md).toContain("Director salary")
+  })
+
+  it("lists every timeline event, including daily running costs", () => {
     const md = pack()
     const timeline = md.slice(
       md.indexOf("## Timeline"),
       md.indexOf("## Projects")
     )
-    expect(timeline).not.toContain("Running costs (monthly average)")
+    expect(timeline).toContain("Running costs (monthly average)")
     expect(timeline).toContain("Month-end payout to directors")
+    expect(timeline).toMatch(/lowest -?\d/)
   })
 
   it("only includes adjustments when there are some", () => {
