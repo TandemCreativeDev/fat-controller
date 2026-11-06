@@ -402,6 +402,9 @@ function Bucket({
             {formatMoney(bucket.totalIn)} invoiced in
           </p>
         </div>
+        {bucket.takeHomeNote && (
+          <p className="text-xs tabular-nums">{bucket.takeHomeNote}</p>
+        )}
         <p className="text-xs text-muted-foreground tabular-nums">
           Invoices after tax set-aside: {formatMoney(bucket.each)} each
         </p>

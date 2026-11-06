@@ -160,10 +160,13 @@ export function OverviewBucketCard({ bucket }: { bucket: OverviewBucket }) {
         value={formatSigned(bucket.fromBank)}
       />
       <Headline
-        label="Each"
+        label="Take-home each"
         sub={`${formatMoney(bucket.payout)} between directors`}
         value={formatMoney(bucket.takeHome)}
       />
+      <p className="text-xs text-foreground tabular-nums">
+        {bucket.takeHomeNote}
+      </p>
       <p className="text-xs text-muted-foreground">
         Leaves {formatBalance(bucket.closing)} in the bank
         {bucket.holdBack &&

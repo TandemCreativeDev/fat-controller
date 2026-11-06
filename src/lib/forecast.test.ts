@@ -12,6 +12,7 @@ import {
   invoiceDetail,
   invoiceShare,
   payoutBuckets,
+  takeHomeNote,
   projectTitle,
 } from "./forecast-buckets"
 import { formatMoney } from "./format"
@@ -1806,6 +1807,27 @@ describe("payout buckets", () => {
     )
   const find = (b: ReturnType<typeof buckets>["months"][number], key: string) =>
     b.clients.flatMap((c) => c.invoices).find((i) => i.row.key === key)!
+
+  it("says what the take-home is made of", () => {
+    const ready = (salary: number) => ({
+      ...run(baseInput()),
+      directorCount: 2,
+      salaryPerMonth: String(salary * 2),
+    })
+    const plain = (v: string) => v
+    expect(takeHomeNote(ready(100), "150.00", plain)).toBe(
+      "100.00 salary + 50.00 dividend"
+    )
+    expect(takeHomeNote(ready(100), "100.00", plain)).toBe(
+      "100.00 salary, no dividend"
+    )
+    expect(takeHomeNote(ready(100), "60.00", plain)).toBe(
+      "60.00 salary, 40.00 short of the full salary, no dividend"
+    )
+    expect(takeHomeNote(ready(0), "60.00", plain)).toBe(
+      "Salary and dividend together"
+    )
+  })
 
   it("heads each month with its take-home, not the invoice share", () => {
     const input = baseInput({

@@ -10,7 +10,7 @@ import {
   type TimelineCategory,
   type TimelineRow,
 } from "@/lib/forecast"
-import { payoutBuckets } from "@/lib/forecast-buckets"
+import { payoutBuckets, takeHomeNote } from "@/lib/forecast-buckets"
 import {
   CATEGORY_COLOUR,
   NEUTRAL_COLOUR,
@@ -216,6 +216,8 @@ export type OverviewBucket = MonthSum & {
   /** Opening less closing balance: what the bank adds to the payout, or keeps. */
   fromBank: string
   takeHome: string
+  /** What the take-home is made of, in words. */
+  takeHomeNote: string
   /** All directors together. */
   payout: string
   closing: string
@@ -296,6 +298,7 @@ export function overviewBuckets(
       payoutDate: m.payoutDate,
       fromBank: money(new D(m.opening).minus(m.closing)),
       takeHome: m.takeHomePerDirector,
+      takeHomeNote: takeHomeNote(result, m.takeHomePerDirector, formatMoney),
       payout: money(new D(m.directorPay).abs()),
       closing: m.closing,
       holdBack: new D(m.holdBack).gt(0)

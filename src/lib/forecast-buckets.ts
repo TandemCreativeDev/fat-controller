@@ -72,6 +72,8 @@ export type PayoutBucket = {
   totalIn: string
   /** The month's take-home per director. Null for invoices after the months shown. */
   takeHome: string | null
+  /** What the take-home is made of, in words. */
+  takeHomeNote: string | null
   /** Invoices less set-asides, shared between directors. Not take-home. */
   each: string
   /** Client money that has already landed this month, and so isn't listed. */
@@ -149,6 +151,7 @@ function buildBucket(
   month: string | null,
   payoutDate: string | null,
   takeHome: string | null,
+  takeHomeNote: string | null,
   rows: MoneyInRow[],
   received: Dec,
   directors: number,
@@ -205,6 +208,7 @@ function buildBucket(
     month,
     payoutDate,
     takeHome,
+    takeHomeNote,
     totalIn: money(totalIn),
     each: money(addEach(included)),
     received: money(received),
@@ -273,6 +277,28 @@ function segmentsFor(
   ]
 }
 
+/**
+ * Take-home is the whole month-end payout, so it's salary and dividend together.
+ * The salary comes first; only what's above it is dividend.
+ */
+export function takeHomeNote(
+  result: Extract<ForecastResult, { blocked: false }>,
+  takeHome: string,
+  formatMoney: (amount: string) => string
+): string {
+  const salary = new D(result.salaryPerMonth).div(
+    Math.max(result.directorCount, 1)
+  )
+  if (salary.isZero()) return "Salary and dividend together"
+  const total = new D(takeHome)
+  if (total.lt(salary))
+    return `${formatMoney(money(total))} salary, ${formatMoney(money(salary.minus(total)))} short of the full salary, no dividend`
+  const dividend = total.minus(salary)
+  return dividend.isZero()
+    ? `${formatMoney(money(salary))} salary, no dividend`
+    : `${formatMoney(money(salary))} salary + ${formatMoney(money(dividend))} dividend`
+}
+
 /** One bucket per month shown, then one for anything landing after them. */
 export function payoutBuckets(
   result: Extract<ForecastResult, { blocked: false }>,
@@ -294,6 +320,7 @@ export function payoutBuckets(
       m.month,
       m.payoutDate,
       m.takeHomePerDirector,
+      takeHomeNote(result, m.takeHomePerDirector, formatMoney),
       inMonth,
       new D(group?.received ?? 0),
       directors,
@@ -325,7 +352,16 @@ export function payoutBuckets(
       [...slots.entries()].map(([client, slot]) => [client, seriesColour(slot)])
     ),
     later: laterRows.length
-      ? buildBucket(null, null, null, laterRows, ZERO, directors, formatMoney)
+      ? buildBucket(
+          null,
+          null,
+          null,
+          null,
+          laterRows,
+          ZERO,
+          directors,
+          formatMoney
+        )
       : null,
   }
 }
