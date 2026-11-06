@@ -36,6 +36,7 @@ const form = (data: FormData) => Object.fromEntries(data)
 const forecastSettings = z.object({
   forecastStartDate: optionalDate,
   buffer: z.coerce.number().min(0),
+  directorSalary: z.coerce.number().min(0),
   rate: z.coerce.number().min(0).max(100),
   hoursPerDay: z.coerce.number().positive().max(24),
   rounding: z.coerce.number().positive().max(1),
@@ -56,6 +57,11 @@ export async function saveForecastSettings(
   const v = parsed.data
   await saveSetting("forecast_start_date", v.forecastStartDate, director.id)
   await saveSetting("operating_buffer_gbp", v.buffer, director.id)
+  await saveSetting(
+    "director_monthly_salary_gbp",
+    v.directorSalary,
+    director.id
+  )
   await saveSetting("ct_set_aside_rate", v.rate / 100, director.id)
   await saveSetting("hours_per_day", v.hoursPerDay, director.id)
   await saveSetting("invoice_day_rounding", v.rounding, director.id)
@@ -138,6 +144,7 @@ const projectForm = z
     chargeRateGbp: optionalMoney,
     invoiceAnchorDate: optionalDate,
     invoiceIntervalDays: z.coerce.number().int().min(1).default(14),
+    endDate: optionalDate,
     extraInvoiceDates: dateList,
     skippedInvoiceDates: dateList,
     paymentTermsDays: z.coerce.number().int().min(0).default(30),

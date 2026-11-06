@@ -6,6 +6,8 @@ import type {
   MonthBreakdown,
 } from "@/lib/forecast"
 
+import { inOutMonths } from "@/lib/forecast-views"
+
 /**
  * The forecast as one Markdown file an LLM can read without guessing: the rules
  * behind the figures, then the figures. Pure, so the format is unit-tested;
@@ -112,6 +114,21 @@ export function buildForecastPack(d: ForecastPackInput): string {
       markdownTable(
         ["Line", ...result.months.map((m) => m.month.slice(0, 7))],
         ROWS.map(([label, get]) => [label, ...result.months.map(get)])
+      )
+  )
+
+  out.push(
+    "## Money in and out, before dividends\n\nBank movements for past months, forecast for later ones. Leaves out dividends, the month-end payout and transfers, apart from tax set-asides. Future salaries come from the salary setting.\n\n" +
+      markdownTable(
+        ["Month", "Basis", "Money in", "Money out", "Left", "From tax reserve"],
+        inOutMonths(result, (v) => v).map((m) => [
+          m.month.slice(0, 7),
+          m.basis,
+          m.moneyInTotal,
+          m.moneyOutTotal,
+          m.left,
+          m.fromReserve,
+        ])
       )
   )
 

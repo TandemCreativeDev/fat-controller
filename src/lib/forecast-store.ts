@@ -292,6 +292,7 @@ export async function loadForecastInput(
     holdBacks,
     expectations,
     customInvoices,
+    contacts,
     holidays,
     balances,
     cursor,
@@ -319,6 +320,9 @@ export async function loadForecastInput(
     db.select().from(holdBack),
     db.select().from(invoiceExpectation),
     db.select().from(customInvoice),
+    db
+      .select({ id: xeroContact.contactId, name: xeroContact.name })
+      .from(xeroContact),
     db.select({ date: bankHoliday.date }).from(bankHoliday),
     db.select().from(bankBalance).orderBy(desc(bankBalance.asOf)),
     db
@@ -374,6 +378,7 @@ export async function loadForecastInput(
       lookbackDays: settings.forecast_lookback_days,
       months: settings.forecast_months,
       bufferGbp: settings.operating_buffer_gbp,
+      directorSalaryGbp: settings.director_monthly_salary_gbp,
       startDate,
       vatRegisteredFrom: settings.vat_registered_from,
       vatRate: settings.vat_rate,
@@ -410,6 +415,7 @@ export async function loadForecastInput(
     })),
     invoices: invoices.map((i) => ({
       invoiceId: i.invoiceId,
+      contactId: i.contactId,
       invoiceNumber: i.invoiceNumber,
       invoiceDate: i.invoiceDate,
       dueDate: i.dueDate,
@@ -444,6 +450,7 @@ export async function loadForecastInput(
           }
         : null,
     manualBalance: manual?.closingGbp ?? null,
+    contacts,
     customInvoices: customInvoices.map((c) => ({
       id: c.id,
       label: c.label,

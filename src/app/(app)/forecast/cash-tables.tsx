@@ -3,7 +3,7 @@
 import { Fragment, useState } from "react"
 
 import { ActionForm } from "@/components/action-form"
-import { Field, SelectField } from "@/components/form-fields"
+import { Field } from "@/components/form-fields"
 import {
   Table,
   TableBody,
@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import type { BillPlan, MonthBreakdown } from "@/lib/forecast"
+import type { MonthBreakdown } from "@/lib/forecast"
 import {
   formatDay,
   formatDayShort,
@@ -23,12 +23,8 @@ import { cn } from "@/lib/utils"
 import {
   clearHoldBack,
   deleteAdjustment,
-  deleteBill,
-  markBillPaid,
-  planBill,
   saveAdjustment,
   saveHoldBack,
-  unmatchBill,
 } from "./actions"
 
 /** Opens one editor at a time; the first cell's button makes that keyboard-friendly. */
@@ -61,215 +57,6 @@ function RowButton({
     >
       {children}
     </button>
-  )
-}
-
-// ------------------------------------------------------------------ bills
-
-type Payment = {
-  bankTransactionId: string
-  personId: string
-  date: string
-  amount: string
-}
-
-function BillIdentity({ bill }: { bill: BillPlan }) {
-  return (
-    <>
-      <input type="hidden" name="personId" value={bill.personId} />
-      <input type="hidden" name="issuedOn" value={bill.issuedOn} />
-      <input type="hidden" name="periodStart" value={bill.periodStart} />
-      <input type="hidden" name="periodEnd" value={bill.periodEnd} />
-      <input type="hidden" name="amountGbp" value={bill.amount} />
-    </>
-  )
-}
-
-function BillEditor({
-  bill,
-  payments,
-}: {
-  bill: BillPlan
-  payments: Payment[]
-}) {
-  const key = `${bill.personId}-${bill.issuedOn}`
-  if (bill.status !== "unpaid")
-    return bill.id ? (
-      <ActionForm
-        action={unmatchBill}
-        submit="Unmatch payment"
-        variant="outline"
-      >
-        <input type="hidden" name="id" value={bill.id} />
-      </ActionForm>
-    ) : null
-  const mine = payments.filter((p) => p.personId === bill.personId)
-  return (
-    <div className="flex flex-wrap items-end gap-6 py-2">
-      <ActionForm
-        action={planBill}
-        submit="Set plan"
-        variant="outline"
-        className="flex-row flex-wrap items-end"
-      >
-        <BillIdentity bill={bill} />
-        <Field
-          id={`order-${key}`}
-          name="payOrder"
-          label="Pay order"
-          type="number"
-          className="w-20"
-          defaultValue={bill.payOrder ?? ""}
-        />
-        <Field
-          id={`plan-${key}`}
-          name="plannedPayOn"
-          label="Planned date"
-          type="date"
-          className="w-40"
-          defaultValue={bill.plannedPayOn ?? ""}
-        />
-      </ActionForm>
-      <ActionForm
-        action={markBillPaid}
-        submit="Mark paid"
-        variant="outline"
-        className="flex-row flex-wrap items-end"
-      >
-        <BillIdentity bill={bill} />
-        <Field
-          id={`paid-${key}`}
-          name="paidOn"
-          label="Paid on"
-          type="date"
-          className="w-40"
-          required
-        />
-        <SelectField
-          id={`tx-${key}`}
-          name="bankTransactionId"
-          label="Bank payment"
-          options={[
-            { value: "", label: "None" },
-            ...mine.map((p) => ({
-              value: p.bankTransactionId,
-              label: `${formatDay(p.date)}, ${formatPence(p.amount)}`,
-            })),
-          ]}
-        />
-      </ActionForm>
-      {bill.id && (
-        <ActionForm action={deleteBill} submit="Delete" variant="ghost">
-          <input type="hidden" name="id" value={bill.id} />
-        </ActionForm>
-      )}
-    </div>
-  )
-}
-
-export function BillsTable({
-  bills,
-  payments,
-}: {
-  bills: BillPlan[]
-  payments: Payment[]
-}) {
-  const { isOpen, toggle } = useOneOpen()
-  if (bills.length === 0)
-    return <p className="text-sm text-muted-foreground">No bills yet.</p>
-  const unpaid = bills.filter((b) => b.status === "unpaid")
-  const paid = bills.filter((b) => b.status !== "unpaid")
-  const groups: [string, BillPlan[]][] = [
-    ["To pay", unpaid],
-    ["Paid", paid],
-  ]
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Person</TableHead>
-          <TableHead>Issued</TableHead>
-          <TableHead>Work period</TableHead>
-          <TableHead className="text-right">Amount</TableHead>
-          <TableHead>Due</TableHead>
-          <TableHead>Pay date</TableHead>
-          <TableHead>Status</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {groups.map(([title, list]) =>
-          list.length === 0 ? null : (
-            <Fragment key={title}>
-              <TableRow className="hover:bg-transparent">
-                <TableCell
-                  colSpan={7}
-                  className="pt-5 text-xs font-semibold tracking-[0.08em] text-muted-foreground uppercase"
-                >
-                  {title}
-                </TableCell>
-              </TableRow>
-              {list.map((b) => {
-                const key = `${b.personId}-${b.issuedOn}`
-                return (
-                  <Fragment key={key}>
-                    <TableRow
-                      onClick={() => toggle(key)}
-                      className={cn(
-                        "cursor-pointer",
-                        isOpen(key) && "bg-muted/50"
-                      )}
-                    >
-                      <TableCell>
-                        <RowButton
-                          open={isOpen(key)}
-                          onClick={() => toggle(key)}
-                        >
-                          {b.personName}
-                        </RowButton>
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        {formatDayShort(b.issuedOn)}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">
-                        {formatDayShort(b.periodStart)} –{" "}
-                        {formatDayShort(b.periodEnd)}
-                      </TableCell>
-                      <TableCell className="text-right font-medium tabular-nums">
-                        {formatPence(b.amount)}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        {formatDayShort(b.dueOn)}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        {b.paidOn
-                          ? `Paid ${formatDayShort(b.paidOn)}`
-                          : b.expectedPayOn
-                            ? `Expected ${formatDayShort(b.expectedPayOn)}`
-                            : "–"}
-                      </TableCell>
-                      <TableCell>
-                        {b.status === "unpaid"
-                          ? b.id
-                            ? "entered"
-                            : "forecast"
-                          : b.status}
-                      </TableCell>
-                    </TableRow>
-                    {isOpen(key) && (
-                      <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={7}>
-                          <BillEditor bill={b} payments={payments} />
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </Fragment>
-                )
-              })}
-            </Fragment>
-          )
-        )}
-      </TableBody>
-    </Table>
   )
 }
 

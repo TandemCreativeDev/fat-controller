@@ -100,6 +100,14 @@ export default async function SettingsPage({
                 defaultValue={settings.forecast_start_date ?? ""}
               />
               <Field
+                name="directorSalary"
+                label="Director salary per month, each (£)"
+                type="number"
+                min={0}
+                step="0.01"
+                defaultValue={settings.director_monthly_salary_gbp}
+              />
+              <Field
                 name="buffer"
                 label="Operating buffer (£)"
                 type="number"

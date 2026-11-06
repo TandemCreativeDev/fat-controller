@@ -14,7 +14,7 @@ export default async function AppLayout({
   return (
     <div className="flex min-h-svh flex-col">
       <header className="sticky top-0 z-20 border-b border-border/60 bg-background/70 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-6">
+        <div className="mx-auto flex h-16 max-w-screen-2xl items-center gap-6 px-6">
           <Link
             href="/"
             className="font-heading text-[15px] font-semibold tracking-tight"
@@ -28,7 +28,7 @@ export default async function AppLayout({
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-6 pt-10 pb-16">
+      <main className="mx-auto w-full max-w-screen-2xl flex-1 px-6 pt-10 pb-16">
         {children}
       </main>
     </div>

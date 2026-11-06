@@ -15,6 +15,8 @@
     --color-sidebar-primary: var(--sidebar-primary);
     --color-sidebar-foreground: var(--sidebar-foreground);
     --color-sidebar: var(--sidebar);
+    --color-success: var(--success);
+    --color-success-mark: var(--success-mark);
     --color-chart-5: var(--chart-5);
     --color-chart-4: var(--chart-4);
     --color-chart-3: var(--chart-3);
@@ -67,12 +69,14 @@
     --border: oklch(0.922 0 0);
     --input: oklch(0.922 0 0);
     --ring: oklch(0.708 0 0);
+    --success: oklch(0.52 0.14 155);
+    --success-mark: oklch(0.52 0.14 155);
     --chart-1: oklch(0.55 0.15 250);
     --chart-2: oklch(0.72 0.15 65);
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --radius: 0.875rem;
+    --radius: 0.375rem;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
     --sidebar-primary: oklch(0.205 0 0);
@@ -103,6 +107,8 @@
     --border: rgb(255 255 255 / 0.08);
     --input: rgb(255 255 255 / 0.1);
     --ring: #a78bfa;
+    --success: #10b981;
+    --success-mark: #059669;
     --chart-1: #8b5cf6;
     --chart-2: #0891b2;
     --chart-3: #ec4899;

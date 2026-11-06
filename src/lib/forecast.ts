@@ -124,6 +124,8 @@ export type ForecastSettings = {
   lookbackDays: number
   months: number
   bufferGbp: number | string
+  /** Each director's monthly salary. Only the In and out view uses this. */
+  directorSalaryGbp: number | string
   startDate: string
   vatRegisteredFrom: string | null
   vatRate: number | string
@@ -142,6 +144,9 @@ export type ProjectInput = {
   skippedInvoiceDates: string[]
   paymentTermsDays: number
   active: boolean
+  xeroContactId?: string | null
+  /** No work is forecast after this date. */
+  endDate?: string | null
 }
 
 export type PersonInput = {
@@ -175,6 +180,7 @@ export type TimeEntryInput = {
 
 export type SalesInvoiceInput = {
   invoiceId: string
+  contactId?: string | null
   invoiceNumber: string | null
   invoiceDate: string
   dueDate: string | null
@@ -459,6 +465,8 @@ export type BuiltInvoice = {
   overrideDays: string | null
   overrideAmount: string | null
   overrideNote: string | null
+  /** The Xero contact on the invoice, or on its project for a forecast one. */
+  clientName?: string | null
   /** Set on a one-off invoice a director added. */
   customId?: string
   customNote?: string | null
@@ -511,6 +519,7 @@ export type EventType =
   | "adjustment"
   | "manual_balance"
   | "director_payout"
+  | "reserve_repayment"
 
 export type TimelineEvent = {
   date: string
@@ -548,6 +557,8 @@ export type MonthBreakdown = {
   shortfall: string
   payout: string
   takeHomePerDirector: string
+  /** The last working day of the month, when the payout happens. */
+  payoutDate: string
   addsUp: boolean
 }
 
@@ -590,6 +601,23 @@ export type ForecastInput = {
   expectations: InvoiceExpectationInput[]
   /** One-off invoices added by a director. */
   customInvoices: CustomInvoiceInput[]
+  /** Xero contacts, for client names. */
+  contacts: { id: string; name: string }[]
+}
+
+/** A past month's bank movements, by what they were for. */
+export type CashMonth = {
+  month: string
+  moneyIn: string
+  contractors: string
+  running: string
+  salaries: string
+  other: string
+  setAsides: string
+  /** Money moved back from the tax reserve, which still has to be replaced. */
+  fromReserve: string
+  /** The month's money in, by Xero client. */
+  clients: { label: string; amount: string }[]
 }
 
 export type ForecastResult =
@@ -605,6 +633,13 @@ export type ForecastResult =
       warnings: ForecastWarning[]
       runningCostAverage: string
       taxReserveBalance: string | null
+      directorCount: number
+      /** Salaries a month, all directors together. */
+      salaryPerMonth: string
+      /** Months before the timeline starts, from the bank. */
+      cashHistory: CashMonth[]
+      /** In name order, so each keeps one colour. */
+      contractors: string[]
     }
 
 // ------------------------------------------------------------------ days
@@ -627,10 +662,12 @@ class DayBook {
   private readonly lookbackFrom: string
   private readonly lookbackWorkingDays: number
   private readonly rateCache = new Map<string, Dec>()
+  private readonly endDates: Map<string, string | null | undefined>
 
   constructor(readonly input: ForecastInput) {
     const { settings, today } = input
     this.holidays = new Set(input.holidays)
+    this.endDates = new Map(input.projects.map((p) => [p.id, p.endDate]))
     this.hoursPerDay = new D(settings.hoursPerDay)
     const span = addDays(today, 1 - settings.lookbackDays)
     this.lookbackFrom = span > settings.startDate ? span : settings.startDate
@@ -704,6 +741,8 @@ class DayBook {
 
   forecastOn(project: string, person: string, date: string): Dec {
     if (date <= this.input.today) return ZERO
+    const end = this.endDates.get(project)
+    if (end && date > end) return ZERO
     if (!isWorkingDay(date, this.holidays)) return ZERO
     return this.dailyRate(project, person)
   }
@@ -849,7 +888,14 @@ function buildInvoices(
     const latestReal = real.at(-1)?.invoiceDate ?? null
 
     let lastDate: string | null = null
-    const allDates = invoiceDates(project, settings.startDate, windowEnd)
+    const cycleDates = invoiceDates(project, settings.startDate, windowEnd)
+    // The first invoice date on or after the end covers the last of the work.
+    const lastInvoice = project.endDate
+      ? cycleDates.find((d) => d >= project.endDate!)
+      : undefined
+    const allDates = lastInvoice
+      ? cycleDates.filter((d) => d <= lastInvoice)
+      : cycleDates
     const timelineDates = [...new Set([...allDates, ...realDates])].sort()
 
     for (const date of timelineDates) {
@@ -1054,6 +1100,20 @@ function buildInvoices(
       factor: new D(1),
       forecastVat: vat,
     })
+  }
+
+  const contactName = new Map(input.contacts.map((c) => [c.id, c.name]))
+  const invoiceContact = new Map(
+    input.invoices.map((i) => [i.invoiceId, i.contactId ?? null])
+  )
+  const projectContact = new Map(
+    input.projects.map((p) => [p.id, p.xeroContactId ?? null])
+  )
+  for (const inv of out) {
+    const contact =
+      (inv.invoiceId ? invoiceContact.get(inv.invoiceId) : null) ??
+      (inv.projectId ? projectContact.get(inv.projectId) : null)
+    inv.clientName = contact ? (contactName.get(contact) ?? null) : null
   }
 
   return out.sort((a, b) => a.invoiceDate.localeCompare(b.invoiceDate))
@@ -1596,8 +1656,20 @@ function prepare(
     amount: Dec
     label: string
     projectId: string | null
+    repayment?: boolean
   }
   const owed: Owed[] = []
+  // Money taken back from the tax reserve is still owed to it. It goes back on
+  // the month's payout day, so it comes out of the payout rather than the bills.
+  for (const l of cash)
+    if (l.kind === "backstop_in" && l.date >= settings.startDate)
+      owed.push({
+        date: l.date,
+        amount: new D(l.amount),
+        label: "Repay tax reserve",
+        projectId: null,
+        repayment: true,
+      })
   const vatItems: { date: string; amount: Dec }[] = []
   const registeredFrom = settings.vatRegisteredFrom
 
@@ -1677,14 +1749,18 @@ function prepare(
     const remaining = o.amount.minus(settled)
     if (remaining.lte(0)) continue
     const next = addDays(o.date, 1)
-    const moveOn = next > today ? next : today
+    const moveOn = o.repayment
+      ? lastWorkingDay(o.date > today ? o.date : today, new Set(input.holidays))
+      : next > today
+        ? next
+        : today
     scheduled.push({ owedOn: o.date, moveOn, amount: remaining })
     if (moveOn <= lastDay)
       events.push({
         date: moveOn,
         amount: remaining.negated(),
-        type: "set_aside",
-        label: `Set-aside: ${o.label}`,
+        type: o.repayment ? "reserve_repayment" : "set_aside",
+        label: o.repayment ? o.label : `Set-aside: ${o.label}`,
         projectId: o.projectId,
         personId: null,
         source: "forecast",
@@ -1843,6 +1919,62 @@ function runningCostAverage(input: ForecastInput): Dec {
 
 // ------------------------------------------------------------------ the whole thing
 
+/** Complete months before this one, from bank lines. Dividends aren't counted anywhere. */
+function cashHistory(input: ForecastInput): CashMonth[] {
+  const first = monthStart(input.today)
+  const contactOf = new Map(
+    input.invoices.map((i) => [i.invoiceId, i.contactId ?? null])
+  )
+  const nameOf = new Map(input.contacts.map((c) => [c.id, c.name]))
+  const months = [
+    ...new Set(
+      input.cash.filter((l) => l.date < first).map((l) => monthStart(l.date))
+    ),
+  ].sort()
+  return months.map((month) => {
+    const lines = input.cash.filter((l) => monthStart(l.date) === month)
+    const total = (...kinds: CashKind[]) =>
+      money(
+        sum(
+          lines
+            .filter((l) => kinds.includes(l.kind))
+            .map((l) => new D(l.amount))
+        )
+      )
+    return {
+      month,
+      moneyIn: total("client_payment", "other_in"),
+      contractors: total("contractor_payment"),
+      running: total("running_cost"),
+      salaries: total("director_salary"),
+      other: total("vat_payment"),
+      setAsides: total("set_aside"),
+      fromReserve: total("backstop_in"),
+      clients: [
+        ...lines
+          .filter((l) => l.kind === "client_payment" || l.kind === "other_in")
+          .reduce((byName, l) => {
+            const contact = l.salesInvoiceId
+              ? contactOf.get(l.salesInvoiceId)
+              : null
+            const name = contact
+              ? (nameOf.get(contact) ?? "Other money in")
+              : "Other money in"
+            return byName.set(name, (byName.get(name) ?? ZERO).plus(l.amount))
+          }, new Map<string, Dec>())
+          .entries(),
+      ]
+        .sort((a, b) => b[1].comparedTo(a[1]))
+        .map(([label, amount]) => ({ label, amount: money(amount) })),
+    }
+  })
+}
+
+/** Directors split take-home equally. With none set up, nothing is divided. */
+function directorCount(input: ForecastInput): number {
+  return Math.max(input.people.filter((p) => p.kind === "director").length, 1)
+}
+
 function monthRows(
   input: ForecastInput,
   prepared: Prepared,
@@ -1868,7 +2000,7 @@ function monthRows(
   const backstopIn = total("backstop_in")
   const otherIn = total("other_in", "other_transfer_in")
   const contractorBills = total("contractor_payment", "contractor_bill")
-  const setAsides = total("set_aside")
+  const setAsides = total("set_aside", "reserve_repayment")
   const vatPayments = total("vat_payment")
   const otherTransfersOut = total("other_transfer_out")
   const runningCosts = total("running_cost")
@@ -1907,7 +2039,10 @@ function monthRows(
     closing: money(closing),
     vatOwed: money(prepared.vatOwedOn(end)),
     payout: money(payout),
-    takeHomePerDirector: money(penny(directorPay.negated().div(2))),
+    takeHomePerDirector: money(
+      penny(directorPay.negated().div(directorCount(input)))
+    ),
+    payoutDate: lastWorkingDay(month, new Set(input.holidays)),
     addsUp,
   }
 }
@@ -2062,6 +2197,17 @@ export function runForecast(input: ForecastInput): ForecastResult {
     warnings,
     runningCostAverage: money(runningCostAverage(input)),
     taxReserveBalance: input.taxReserveBalance,
+    directorCount: directorCount(input),
+    salaryPerMonth: money(
+      new D(settings.directorSalaryGbp).times(
+        input.people.filter((p) => p.kind === "director").length
+      )
+    ),
+    cashHistory: cashHistory(input),
+    contractors: input.people
+      .filter((p) => p.kind === "contractor")
+      .map((p) => p.name)
+      .sort((a, b) => a.localeCompare(b)),
   }
 }
 
@@ -2261,6 +2407,11 @@ export type MoneyInRow = {
   overrideNote: string | null
   /** Forecast invoices can have their days or amount changed; raised ones can't. */
   canOverride: boolean
+  clientName: string | null
+  /** The whole invoice before VAT, its total with VAT, and its set-aside. */
+  netAmount: string
+  totalAmount: string
+  setAside: string
   /** Set on a one-off invoice, with its figures before VAT for editing. */
   custom: { id: string; amount: string; cost: string; landsOn: string } | null
   customNote: string | null
@@ -2322,6 +2473,10 @@ export function moneyInTable(
         overrideAmount: inv.overrideAmount,
         overrideNote: inv.overrideNote,
         canOverride: inv.status !== "raised" && inv.projectId !== null,
+        clientName: inv.clientName ?? null,
+        netAmount: inv.amount,
+        totalAmount: inv.total,
+        setAside: inv.setAside,
         custom: inv.customId
           ? {
               id: inv.customId,
@@ -2385,6 +2540,7 @@ const CATEGORY_OF: Record<EventType, TimelineCategory> = {
   director_salary: "directors",
   dividend: "directors",
   director_payout: "directors",
+  reserve_repayment: "set_asides",
   running_cost: "running",
   adjustment: "other",
   manual_balance: "other",
@@ -2491,60 +2647,17 @@ export function accuracySummary(rows: AccuracyRow[]): AccuracySummary {
   }
 }
 
-// ------------------------------------------------------------------ bills chart
-
-/** Contractor money leaving each month, by person, whether paid or still expected. */
-export function billsChart(
-  result: Extract<ForecastResult, { blocked: false }>
-): {
-  series: { key: string; label: string }[]
-  months: ({ month: string } & Record<string, number | string>)[]
-} {
-  const people = [...new Set(result.bills.map((b) => b.personName))].sort()
-  const series = people.map((label, i) => ({ key: `c${i}`, label }))
-  return {
-    series,
-    months: result.months.map((m) => {
-      const row: { month: string } & Record<string, number | string> = {
-        month: m.month,
-      }
-      people.forEach((name, i) => {
-        row[`c${i}`] = sum(
-          result.bills
-            .filter((b) => {
-              const when = b.paidOn ?? b.expectedPayOn
-              return (
-                b.personName === name &&
-                when !== null &&
-                monthStart(when) === m.month
-              )
-            })
-            .map((b) => new D(b.paidAmount ?? b.amount))
-        ).toNumber()
-      })
-      return row
-    }),
-  }
-}
-
 // ------------------------------------------------------------------ charts
 
 export type ForecastCharts = {
   today: string
   /** End-of-day balance. `actual` and `forecast` meet on today, so the line joins. */
   balance: { date: string; actual: number | null; forecast: number | null }[]
-  moneyIn: {
-    series: { key: string; label: string }[]
-    months: ({ month: string } & Record<string, number | string>)[]
-  }
   moneyOut: {
     series: { key: string; label: string }[]
     months: ({ month: string } & Record<string, number | string>)[]
   }
 }
-
-/** The most projects a stack can name; the rest fold into "Other". */
-const MAX_NAMED_PROJECTS = 4
 
 const OUT_GROUPS: { key: string; label: string; types: EventType[] }[] = [
   {
@@ -2565,7 +2678,7 @@ const OUT_GROUPS: { key: string; label: string; types: EventType[] }[] = [
 export function forecastCharts(
   result: Extract<ForecastResult, { blocked: false }>
 ): ForecastCharts {
-  const { today, months, timeline, invoices } = result
+  const { today, months, timeline } = result
   const first = months[0].month
   const end = monthEnd(months.at(-1)!.month)
   const monthOf = (d: string) => monthStart(d)
@@ -2584,51 +2697,6 @@ export function forecastCharts(
       forecast: d >= today ? running : null,
     })
   }
-
-  // -------- money in, by project
-  const nameOf = new Map(
-    invoices
-      .filter((i) => i.projectId && i.projectName)
-      .map((i) => [i.projectId!, i.projectName!])
-  )
-  const landed = timeline.filter(
-    (e) =>
-      (e.type === "client_payment" || e.type === "expected_invoice") &&
-      new D(e.amount).gt(0)
-  )
-  const totals = new Map<string, Dec>()
-  for (const e of landed)
-    if (e.projectId)
-      totals.set(e.projectId, (totals.get(e.projectId) ?? ZERO).plus(e.amount))
-  // The biggest get named, in name order so a project keeps its slot as figures move.
-  const named = [...totals.entries()]
-    .sort((a, b) => b[1].comparedTo(a[1]))
-    .slice(0, MAX_NAMED_PROJECTS)
-    .map(([id]) => id)
-    .sort((a, b) => (nameOf.get(a) ?? "").localeCompare(nameOf.get(b) ?? ""))
-  const keyFor = (id: string | null) => {
-    const i = id ? named.indexOf(id) : -1
-    return i >= 0 ? `p${i}` : "other"
-  }
-  const inSeries = named.map((id, i) => ({
-    key: `p${i}`,
-    label: nameOf.get(id) ?? "Project",
-  }))
-  if (landed.some((e) => keyFor(e.projectId) === "other"))
-    inSeries.push({ key: "other", label: "Other" })
-
-  const moneyIn = months.map((m) => {
-    const row: { month: string } & Record<string, number | string> = {
-      month: m.month,
-    }
-    for (const { key } of inSeries) {
-      const inMonth = landed.filter(
-        (e) => monthOf(e.date) === m.month && keyFor(e.projectId) === key
-      )
-      row[key] = sum(inMonth.map((e) => new D(e.amount))).toNumber()
-    }
-    return row
-  })
 
   // -------- money out, by what it's for
   const grouped = new Set(OUT_GROUPS.flatMap((g) => g.types))
@@ -2652,7 +2720,6 @@ export function forecastCharts(
   return {
     today,
     balance,
-    moneyIn: { series: inSeries, months: moneyIn },
     moneyOut: { series: outSeries, months: moneyOut },
   }
 }

@@ -62,6 +62,12 @@ export const settingDefinitions = {
     schema: z.iso.date().nullable(),
     default: null,
   },
+  director_monthly_salary_gbp: {
+    label: "Director salary per month (£)",
+    description: "Each director's monthly salary, for the In and out view.",
+    schema: z.number().min(0),
+    default: 0,
+  },
   bank_account_roles: {
     label: "Bank account roles",
     description: "Operating or tax reserve, per Xero bank account.",

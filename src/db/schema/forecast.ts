@@ -78,6 +78,8 @@ export const project = pgTable("project", {
   chargeRateGbp: money("charge_rate_gbp"),
   invoiceAnchorDate: date("invoice_anchor_date"),
   invoiceIntervalDays: integer("invoice_interval_days").notNull().default(14),
+  /** Work is forecast up to this date, and one last invoice covers it. */
+  endDate: date("end_date"),
   extraInvoiceDates: date("extra_invoice_dates")
     .array()
     .notNull()

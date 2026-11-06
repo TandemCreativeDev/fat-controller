@@ -2,7 +2,7 @@ import Link from "next/link"
 
 import { ActionForm } from "@/components/action-form"
 import { BalanceLine, MonthlyBars } from "@/components/charts"
-import { Field, SelectField } from "@/components/form-fields"
+import { Field } from "@/components/form-fields"
 import { PageHeader } from "@/components/page-header"
 import { StatTile } from "@/components/stat-tile"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -22,40 +22,35 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { accuracySummary, breakdownText, forecastCharts } from "@/lib/forecast"
+import { payoutBuckets } from "@/lib/forecast-buckets"
 import {
-  accuracySummary,
-  billsChart,
-  breakdownText,
-  forecastCharts,
-  moneyInTable,
-  timelineMonths,
-  type MonthBreakdown,
-} from "@/lib/forecast"
+  billBuckets,
+  inOutMonths,
+  overviewBuckets,
+  timelineView,
+} from "@/lib/forecast-views"
 import { getForecastPage, type ForecastPageData } from "@/lib/forecast-store"
 import {
   formatDay,
   formatDayShort,
-  formatMonth,
+  formatMoney,
   formatPence,
   formatPercent,
 } from "@/lib/format"
 import { requireDirector } from "@/lib/session"
 import { cn } from "@/lib/utils"
-import {
-  clearManualBalance,
-  saveBill,
-  saveCustomInvoice,
-  saveManualBalance,
-} from "./actions"
-import { AdjustmentsTable, BillsTable, HoldBacksTable } from "./cash-tables"
+import { clearManualBalance, saveManualBalance } from "./actions"
+import { BillsBuckets } from "./bills-buckets"
+import { AdjustmentsTable, HoldBacksTable } from "./cash-tables"
+import { InOutMonthCard, OverviewBucketCard } from "./overview-buckets"
 import { CopyButton } from "./copy-button"
-import { CustomInvoiceFields, MoneyInTable } from "./money-in-table"
+import { MoneyInBuckets } from "./money-in-buckets"
 import { Timeline } from "./timeline"
-
-const isZero = (amount: string) => Number(amount) === 0
 
 const TABS = [
   { key: "overview", label: "Overview" },
+  { key: "in-out", label: "In and out" },
   { key: "money-in", label: "Money in" },
   { key: "bills", label: "Bills and cash" },
   { key: "timeline", label: "Timeline" },
@@ -153,272 +148,48 @@ function Warnings({ warnings }: { warnings: ForecastPageData["warnings"] }) {
   )
 }
 
-function MonthTile({
-  month,
-  reserve,
-}: {
-  month: MonthBreakdown
-  reserve: string | null
-}) {
+function BalanceCard({ result }: { result: Ready["result"] }) {
+  const charts = forecastCharts(result)
   return (
-    <StatTile
-      label={formatMonth(month.month)}
-      value={formatPence(month.takeHomePerDirector)}
-      accent
-      sub={
-        <span className="flex flex-col gap-1">
-          <span>take-home per director</span>
-          {!isZero(month.holdBack) && (
-            <span>
-              Holding back {formatPence(month.holdBack)}
-              {month.holdBackReason &&
-                ` for ${month.holdBackReason.personName}'s bill due ${formatDay(month.holdBackReason.dueOn)}`}
-            </span>
-          )}
-          {!isZero(month.shortfall) && (
-            <span className="text-destructive">
-              {formatPence(month.shortfall)} short next month
-              {reserve !== null &&
-                `, with ${formatPence(reserve)} in the tax reserve as a backstop`}
-            </span>
-          )}
-        </span>
-      }
-    />
-  )
-}
-
-type BreakdownRow = [string, (m: MonthBreakdown) => string, boolean?]
-
-const BREAKDOWN: { title: string; rows: BreakdownRow[] }[] = [
-  { title: "", rows: [["Opening balance", (m) => m.opening, true]] },
-  {
-    title: "Money in",
-    rows: [
-      ["Invoices landing", (m) => m.invoicesLanding],
-      ["Back from tax reserve", (m) => m.backstopIn],
-      ["Other money in", (m) => m.otherIn],
-    ],
-  },
-  {
-    title: "Money out",
-    rows: [
-      ["Contractor bills", (m) => m.contractorBills],
-      ["Set-asides", (m) => m.setAsides],
-      ["Running costs", (m) => m.runningCosts],
-      ["VAT payments", (m) => m.vatPayments],
-      ["Other transfers out", (m) => m.otherTransfersOut],
-      ["Adjustments", (m) => m.adjustments],
-      ["Director salary and payouts", (m) => m.directorPay],
-    ],
-  },
-  {
-    title: "Result",
-    rows: [
-      ["Closing balance", (m) => m.closing, true],
-      ["VAT owed", (m) => m.vatOwed],
-      ["Hold-back", (m) => m.holdBack],
-      ["Take-home per director", (m) => m.takeHomePerDirector, true],
-    ],
-  },
-]
-
-function Breakdown({ months }: { months: MonthBreakdown[] }) {
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>
-            <span className="sr-only">Line</span>
-          </TableHead>
-          {months.map((m) => (
-            <TableHead key={m.month} className="text-right">
-              {formatMonth(m.month)}
-            </TableHead>
-          ))}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {BREAKDOWN.flatMap((section) => [
-          ...(section.title
-            ? [
-                <TableRow key={section.title} className="hover:bg-transparent">
-                  <TableCell
-                    colSpan={months.length + 1}
-                    className="pt-4 text-xs font-semibold tracking-[0.08em] text-muted-foreground uppercase"
-                  >
-                    {section.title}
-                  </TableCell>
-                </TableRow>,
-              ]
-            : []),
-          ...section.rows.map(([label, get, strong]) => (
-            <TableRow key={label} className={cn(strong && "font-semibold")}>
-              <TableCell>{label}</TableCell>
-              {months.map((m) => (
-                <TableCell
-                  key={m.month}
-                  className={cn(
-                    "text-right tabular-nums",
-                    isZero(get(m)) && "text-muted-foreground"
-                  )}
-                >
-                  {formatPence(get(m))}
-                </TableCell>
-              ))}
-            </TableRow>
-          )),
-        ])}
-      </TableBody>
-    </Table>
+    <Card>
+      <CardHeader>
+        <CardTitle>Cash in the main account</CardTitle>
+        <CardDescription>
+          End-of-day balance: solid up to today, dashed for the forecast. It
+          should fall to about the buffer at each month-end payout; below zero
+          means a shortfall.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <BalanceLine
+          today={charts.today}
+          data={charts.balance.map((d) => ({
+            ...d,
+            label: formatDayShort(d.date),
+          }))}
+        />
+      </CardContent>
+    </Card>
   )
 }
 
 function OverviewTab({ data }: { data: Ready }) {
   const { result } = data
-  const charts = forecastCharts(result)
   return (
     <>
-      <div className="grid gap-4 md:grid-cols-3">
-        {result.months.map((m) => (
-          <MonthTile
-            key={m.month}
-            month={m}
-            reserve={result.taxReserveBalance}
-          />
-        ))}
-      </div>
+      <BalanceCard result={result} />
       <Card>
-        <CardHeader>
-          <CardTitle>Cash in the main account</CardTitle>
-          <CardDescription>
-            End-of-day balance: solid up to today, dashed for the forecast. It
-            should fall to about the buffer at each month-end payout; below zero
-            means a shortfall.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <BalanceLine
-            today={charts.today}
-            data={charts.balance.map((d) => ({
-              ...d,
-              label: formatDayShort(d.date),
-            }))}
-          />
-        </CardContent>
-      </Card>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Money in, by project</CardTitle>
-            <CardDescription>
-              Details are in the{" "}
-              <Link href="/forecast?tab=money-in" className="underline">
-                Money in
-              </Link>{" "}
-              tab
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <MonthlyBars
-              stacked
-              series={charts.moneyIn.series}
-              data={charts.moneyIn.months.map((m) => ({
-                ...m,
-                label: formatMonth(m.month),
-              }))}
-            />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Where the money goes</CardTitle>
-            <CardDescription>
-              Everything leaving the main account each month
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <MonthlyBars
-              stacked
-              series={charts.moneyOut.series}
-              data={charts.moneyOut.months.map((m) => ({
-                ...m,
-                label: formatMonth(m.month),
-              }))}
-            />
-          </CardContent>
-        </Card>
-      </div>
-      <Card>
-        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
-          <div>
-            <CardTitle>Breakdown by month</CardTitle>
-            <CardDescription>
-              Running costs are forecast at{" "}
-              {formatPence(result.runningCostAverage)} a month, the average of
-              the last three complete months.
-            </CardDescription>
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <CardTitle>Take-home by month</CardTitle>
           </div>
           <CopyButton text={breakdownText(result.months)} />
         </CardHeader>
         <CardContent>
-          <Breakdown months={result.months} />
-        </CardContent>
-      </Card>
-    </>
-  )
-}
-
-function MoneyInTab({ data }: { data: Ready }) {
-  const charts = forecastCharts(data.result)
-  return (
-    <>
-      <Card>
-        <CardHeader>
-          <CardTitle>Money in, by project</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <MonthlyBars
-            stacked
-            series={charts.moneyIn.series}
-            data={charts.moneyIn.months.map((m) => ({
-              ...m,
-              label: formatMonth(m.month),
-            }))}
-          />
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Every invoice still to land</CardTitle>
-          <CardDescription>
-            Each month&apos;s total matches the breakdown. Use the eye to leave
-            an invoice out and see take-home change; its contractor cost stays,
-            because the work is still done. Click a line to change its days,
-            amount or landing date. 0 days means no work.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col gap-4">
-            <details>
-              <summary className="cursor-pointer text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
-                Add a one-off invoice
-              </summary>
-              <p className="mt-2 text-sm text-muted-foreground">
-                For work only you know about yet. It counts like any invoice,
-                with a set-aside. Delete it when the real invoice is in Xero, or
-                it&apos;ll be counted twice.
-              </p>
-              <ActionForm
-                action={saveCustomInvoice}
-                submit="Add to forecast"
-                resetOnSuccess
-                className="mt-3 flex-row flex-wrap items-end"
-              >
-                <CustomInvoiceFields />
-              </ActionForm>
-            </details>
-            <MoneyInTable groups={moneyInTable(data.result)} />
+          <div className="grid items-start gap-4 lg:grid-cols-3">
+            {overviewBuckets(result, formatMoney).map((b) => (
+              <OverviewBucketCard key={b.month} bucket={b} />
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -426,93 +197,43 @@ function MoneyInTab({ data }: { data: Ready }) {
   )
 }
 
+function InOutTab({ data }: { data: Ready }) {
+  const rows = inOutMonths(data.result, formatMoney)
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Money in and out, before dividends</CardTitle>
+        <CardDescription>
+          Bank movements for past months, forecast for later ones. Leaves out
+          dividends and the month-end payout.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid items-start gap-4 lg:grid-cols-3">
+          {rows.map((m) => (
+            <InOutMonthCard key={m.month} month={m} />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function MoneyInTab({ data }: { data: Ready }) {
+  const { months, later } = payoutBuckets(data.result, formatMoney)
+  return <MoneyInBuckets months={months} later={later} />
+}
+
 function BillsTab({ data }: { data: Ready }) {
   const { result } = data
-  const chart = billsChart(result)
   const contractors = data.people.filter((p) => p.kind === "contractor")
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle>Contractor money by month</CardTitle>
-          <CardDescription>
-            Bills paid, or expected to be paid, in each month
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <MonthlyBars
-            stacked
-            series={chart.series}
-            data={chart.months.map((m) => ({
-              ...m,
-              label: formatMonth(m.month),
-            }))}
-          />
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Contractor bills</CardTitle>
-          <CardDescription>
-            Click a line to plan or mark it paid. Doing that to a forecast bill
-            saves it at its current amount.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <BillsTable bills={result.bills} payments={data.unlinkedPayments} />
-          {contractors.length > 0 && (
-            <details>
-              <summary className="cursor-pointer text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
-                Enter a bill
-              </summary>
-              <p className="mt-2 text-sm text-muted-foreground">
-                This replaces the forecast bill for the same person and date.
-              </p>
-              <ActionForm
-                action={saveBill}
-                submit="Enter bill"
-                resetOnSuccess
-                className="mt-3"
-              >
-                <div className="grid gap-3 sm:grid-cols-5">
-                  <SelectField
-                    name="personId"
-                    label="Person"
-                    options={contractors.map((p) => ({
-                      value: p.id,
-                      label: p.name,
-                    }))}
-                  />
-                  <Field
-                    name="issuedOn"
-                    label="Issued on"
-                    type="date"
-                    required
-                  />
-                  <Field
-                    name="periodStart"
-                    label="Period start"
-                    type="date"
-                    required
-                  />
-                  <Field
-                    name="periodEnd"
-                    label="Period end"
-                    type="date"
-                    required
-                  />
-                  <Field
-                    name="amountGbp"
-                    label="Amount (£)"
-                    inputMode="decimal"
-                    required
-                  />
-                </div>
-              </ActionForm>
-            </details>
-          )}
-        </CardContent>
-      </Card>
+      <BillsBuckets
+        buckets={billBuckets(result)}
+        payments={data.unlinkedPayments}
+        contractors={contractors}
+      />
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -587,34 +308,19 @@ function BillsTab({ data }: { data: Ready }) {
 
 function TimelineTab({ data }: { data: Ready }) {
   const { result } = data
-  const charts = forecastCharts(result)
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle>Cash in the main account</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <BalanceLine
-            today={charts.today}
-            data={charts.balance.map((d) => ({
-              ...d,
-              label: formatDayShort(d.date),
-            }))}
-          />
-        </CardContent>
-      </Card>
+      <BalanceCard result={result} />
       <Card>
         <CardHeader>
           <CardTitle>Every cash event</CardTitle>
           <CardDescription>
-            This month is open. Open another to see its events; the line shows
-            its totals and lowest balance. Hidden events still count in the
-            balance.
+            Hover a chip to see the events inside it. Hidden events still count
+            towards the balance.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Timeline months={timelineMonths(result)} today={result.today} />
+          <Timeline view={timelineView(result)} today={result.today} />
         </CardContent>
       </Card>
     </>
@@ -807,6 +513,7 @@ export default async function ForecastPage({
       {header}
       <Warnings warnings={data.warnings} />
       {tab === "overview" && <OverviewTab data={data} />}
+      {tab === "in-out" && <InOutTab data={data} />}
       {tab === "money-in" && <MoneyInTab data={data} />}
       {tab === "bills" && <BillsTab data={data} />}
       {tab === "timeline" && <TimelineTab data={data} />}

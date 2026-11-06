@@ -68,3 +68,44 @@ export function formatDayShort(isoDate: string): string {
 export function formatDays(days: string): string {
   return Number(days).toFixed(2)
 }
+
+/** "2700.00" → "£2,700"; "1662.50" → "£1,662.50". Pence only when there are some. */
+export function formatMoney(amount: string): string {
+  const n = Number(amount)
+  return new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+    minimumFractionDigits: Number.isInteger(n) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(n)
+}
+
+/** "2026-11-13" → "Fri 13 Nov" */
+export function formatDayName(isoDate: string): string {
+  const [y, m, d] = isoDate.split("-").map(Number)
+  const date = new Date(Date.UTC(y, m - 1, d))
+  const part = (o: Intl.DateTimeFormatOptions) =>
+    date.toLocaleDateString("en-GB", { ...o, timeZone: "UTC" })
+  return `${part({ weekday: "short" })} ${d} ${part({ month: "short" })}`
+}
+
+/** "2026-11-01" → "November" */
+export function formatMonthName(isoDate: string): string {
+  const [y, m] = isoDate.split("-").map(Number)
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-GB", {
+    month: "long",
+    timeZone: "UTC",
+  })
+}
+
+/** "2700.00" → "+£2,700", "-5" → "−£5", with a real minus sign. For display only. */
+export function formatSigned(amount: string): string {
+  const n = Number(amount)
+  return `${n < 0 ? "−" : "+"}${formatMoney(String(Math.abs(n)))}`
+}
+
+/** "-1250.50" → "−£1,250.50", and no sign when positive. */
+export function formatBalance(amount: string): string {
+  const n = Number(amount)
+  return `${n < 0 ? "−" : ""}${formatMoney(String(Math.abs(n)))}`
+}

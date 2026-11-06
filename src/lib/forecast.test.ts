@@ -1,9 +1,23 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  billBuckets,
+  contractorColour,
+  inOutMonths,
+  mergeDay,
+  overviewBuckets,
+  timelineView,
+} from "./forecast-views"
+import {
+  invoiceDetail,
+  invoiceShare,
+  payoutBuckets,
+  projectTitle,
+} from "./forecast-buckets"
+import { formatMoney } from "./format"
+import {
   accuracyRows,
   accuracySummary,
-  billsChart,
   bankTransactionCashLines,
   breakdownText,
   classifyCashLine,
@@ -22,6 +36,7 @@ import {
   type ForecastInput,
   type ForecastResult,
   type RawCashLine,
+  type TimelineRow,
   type TimeEntryInput,
 } from "./forecast"
 
@@ -52,6 +67,7 @@ const DIRECTOR_B = {
 }
 
 const PROJECT_A = {
+  xeroContactId: "client-a",
   id: "pa",
   kind: "client" as const,
   code: "AAA",
@@ -66,6 +82,7 @@ const PROJECT_A = {
   active: true,
 }
 const PROJECT_B = {
+  xeroContactId: "client-b",
   id: "pb",
   kind: "client" as const,
   code: "BBB",
@@ -135,6 +152,7 @@ function baseInput(overrides: Partial<ForecastInput> = {}): ForecastInput {
       lookbackDays: 42,
       months: 1,
       bufferGbp: 100,
+      directorSalaryGbp: 1000,
       startDate: "2026-04-21",
       vatRegisteredFrom: null,
       vatRate: 0.2,
@@ -180,6 +198,10 @@ function baseInput(overrides: Partial<ForecastInput> = {}): ForecastInput {
     taxReserveBalance: "5000.00",
     expectations: [],
     customInvoices: [],
+    contacts: [
+      { id: "client-a", name: "ALPHA HOLDINGS LTD" },
+      { id: "client-b", name: "Beta Partners" },
+    ],
     ...overrides,
   }
 }
@@ -1089,33 +1111,69 @@ describe("set-asides", () => {
     expect(r.months[0].takeHomePerDirector).toBe("400.00")
   })
 
-  it("counts money back from the reserve as cash in, leaving what's owed alone", () => {
-    const back: CashLine = {
-      ...raw({
-        sourceId: "back",
-        direction: "in",
-        date: "2026-06-01",
-        amount: "500.00",
-        transactionType: "RECEIVE-TRANSFER",
-      }),
-      kind: "backstop_in",
+  const back = (date: string, amount: string): CashLine => ({
+    ...raw({ sourceId: `back-${date}`, direction: "in", date, amount }),
+    kind: "backstop_in",
+    personId: null,
+  })
+  const noWork = {
+    projects: [{ ...PROJECT_A, invoiceAnchorDate: null }],
+    invoices: [{ ...invoice, outstanding: "0.00" }],
+    overrides: [],
+    entries: [],
+    adjustments: [],
+    people: [DIRECTOR_A, DIRECTOR_B],
+    payRates: [],
+  }
+
+  it("repays money taken from the reserve on payout day, out of the payout", () => {
+    const r = run(
+      baseInput({
+        ...noWork,
+        cash: [back("2026-06-01", "500.00")],
+        balance: { opening: "1000.00", closing: "1500.00" },
+      })
+    )
+    const june = r.months[0]
+    expect(june.backstopIn).toBe("500.00")
+    const repay = r.timeline.find((e) => e.type === "reserve_repayment")!
+    expect(repay).toMatchObject({
+      date: "2026-06-30",
+      amount: "-500.00",
+      label: "Repay tax reserve",
+    })
+    // 1,500 less the 500 going back, less the buffer. The loan adds nothing.
+    expect(june.setAsides).toBe("-500.00")
+    expect(june.payout).toBe("900.00")
+  })
+
+  it("doesn't repay again once transfers have covered it", () => {
+    const transfer: CashLine = {
+      ...raw({ sourceId: "t", date: "2026-05-20", amount: "500.00" }),
+      kind: "set_aside",
       personId: null,
     }
     const r = run(
       baseInput({
-        projects: [{ ...PROJECT_A, invoiceAnchorDate: null }],
-        invoices: [{ ...invoice, outstanding: "0.00" }],
-        overrides: [],
-        entries: [],
-        adjustments: [],
-        cash: [clientPayment("2026-05-30", "1000.00"), back],
-        balance: { opening: "1000.00", closing: "1500.00" },
+        ...noWork,
+        cash: [back("2026-05-10", "500.00"), transfer],
       })
     )
-    expect(r.months[0].backstopIn).toBe("500.00")
-    expect(r.timeline.find((e) => e.type === "set_aside")!.amount).toBe(
-      "-200.00"
+    expect(r.timeline.filter((e) => e.type === "reserve_repayment")).toEqual([])
+  })
+
+  it("stays out of the payout while waiting to go back", () => {
+    // Taken on payout day itself: it's repaid that day, before the payout.
+    const r = run(
+      baseInput({
+        ...noWork,
+        today: "2026-06-30",
+        cash: [back("2026-06-30", "300.00")],
+        balance: { opening: "100.00", closing: "400.00" },
+      })
     )
+    expect(r.months[0].payout).toBe("0.00")
+    expect(r.months[0].closing).toBe("100.00")
   })
 })
 
@@ -1548,6 +1606,69 @@ describe("the money in table", () => {
   })
 })
 
+describe("project end dates", () => {
+  const ending = (endDate: string) =>
+    run(
+      baseInput({
+        projects: [{ ...PROJECT_A, endDate }],
+        overrides: [],
+        settings: { ...baseInput().settings, months: 2 },
+      })
+    )
+  const forecast = (r: ReturnType<typeof run>) =>
+    r.invoices.filter((i) => i.status === "forecast")
+
+  it("stops predicted invoices after one last one covering the end", () => {
+    // Cycle dates are 12 and 26 June; the end falls in the period up to the 26th.
+    const r = ending("2026-06-17")
+    expect(forecast(r).map((i) => i.invoiceDate)).toEqual([
+      "2026-06-12",
+      "2026-06-26",
+    ])
+    const last = forecast(r).at(-1)!
+    // 15, 16 and 17 June only: three working days at one day each.
+    expect(last.forecastDays).toBe("3.0000")
+    expect(last.amount).toBe("1500.00")
+  })
+
+  it("stops contractor bills too", () => {
+    const r = ending("2026-06-17")
+    const after = r.bills.filter((b) => b.issuedOn > "2026-06-26")
+    expect(after).toEqual([])
+    // 2 to 17 June: 12 working days at £300.
+    expect(r.bills.find((b) => b.issuedOn === "2026-06-26")!.amount).toBe(
+      "3600.00"
+    )
+  })
+
+  it("forecasts on and on with no end date", () => {
+    const r = run(
+      baseInput({
+        overrides: [],
+        settings: { ...baseInput().settings, months: 2 },
+      })
+    )
+    expect(
+      r.invoices.filter(
+        (i) => i.projectId === "pa" && i.invoiceDate > "2026-06-26"
+      ).length
+    ).toBeGreaterThan(1)
+  })
+
+  it("still shows a real invoice raised after the end", () => {
+    const r = run(
+      baseInput({
+        projects: [{ ...PROJECT_A, endDate: "2026-05-01" }],
+        overrides: [],
+      })
+    )
+    expect(r.invoices.some((i) => i.invoiceNumber === "AAA-I1")).toBe(true)
+    expect(forecast(r).filter((i) => i.projectId === "pa").length).toBeLessThan(
+      2
+    )
+  })
+})
+
 describe("one-off invoices", () => {
   const oneOff = {
     id: "11111111-1111-4111-8111-111111111111",
@@ -1633,6 +1754,759 @@ describe("one-off invoices", () => {
   })
 })
 
+describe("payout buckets", () => {
+  const buckets = (extra: Partial<ForecastInput> = {}) =>
+    payoutBuckets(
+      run(
+        baseInput({
+          settings: { ...baseInput().settings, months: 2 },
+          ...extra,
+        })
+      ),
+      formatMoney
+    )
+  const find = (b: ReturnType<typeof buckets>["months"][number], key: string) =>
+    b.clients.flatMap((c) => c.invoices).find((i) => i.row.key === key)!
+
+  it("puts an invoice in the month of its due date, including one due on payout day", () => {
+    const { months } = buckets({
+      invoices: [
+        {
+          invoiceId: "payday",
+          contactId: "client-a",
+          invoiceNumber: "AAA-I9",
+          invoiceDate: "2026-06-16",
+          dueDate: "2026-06-30",
+          subTotal: "1000.00",
+          totalTax: "0.00",
+          total: "1000.00",
+          outstanding: "1000.00",
+        },
+      ],
+      overrides: [],
+    })
+    const june = months[0]
+    expect(june.payoutDate).toBe("2026-06-30")
+    expect(find(june, "payday").dueOn).toBe("2026-06-30")
+    // Alpha's 26 June invoice is due 3 July, so it's July's.
+    expect(
+      months[1].clients.flatMap((c) => c.invoices).map((i) => i.row.invoiceDate)
+    ).toContain("2026-06-26")
+  })
+
+  it("keeps an overdue invoice in the month it's now expected, with its real due date", () => {
+    const june = buckets().months[0]
+    const overdue = find(june, "inv1")
+    expect(overdue.kind).toBe("overdue")
+    expect(overdue.dueOn).toBe("2026-05-31")
+    expect(overdue.row.landsOn).toBe("2026-06-01")
+  })
+
+  it("works out each director's share with and without contractor cost", () => {
+    const june = buckets().months[0]
+    // £15,000 less a £1,200 set-aside, between two directors. Cost is paid either way.
+    expect(find(june, "inv1").each).toBe("6900.00")
+    expect(invoiceShare(find(june, "inv1").row, 2)).toBe("6900.00")
+    // Beta: £2,000, no contractor cost: 20% set-aside, between two.
+    const beta = june.clients
+      .flatMap((c) => c.invoices)
+      .find((i) => i.row.projectId === "pb")!
+    expect(beta.row.contractorCost).toBe("0.00")
+    expect(beta.each).toBe("800.00")
+    expect(beta.detail).toContain("no cost")
+  })
+
+  it("reads the rate and director count, rather than assuming them", () => {
+    const three = buckets({
+      people: [
+        ...baseInput().people,
+        { ...DIRECTOR_A, id: "d3", name: "Third", solidtimeUserId: null },
+      ],
+      settings: {
+        ...baseInput().settings,
+        months: 2,
+        ctSetAsideRate: 0.1,
+      },
+    }).months[0]
+    // £15,000 less 10% × £6,000, between three.
+    expect(find(three, "inv1").each).toBe("4800.00")
+  })
+
+  it("matches the engine's invoices landing, including money already received", () => {
+    const paid: CashLine = {
+      ...raw({
+        sourceId: "pay",
+        source: "payment",
+        direction: "in",
+        date: "2026-06-03",
+        amount: "700.00",
+        salesInvoiceId: "paid",
+      }),
+      kind: "client_payment",
+      personId: null,
+    }
+    const input = baseInput({
+      today: "2026-06-05",
+      settings: { ...baseInput().settings, months: 2 },
+      cash: [...baseInput().cash, paid],
+      invoices: [
+        ...baseInput().invoices,
+        {
+          invoiceId: "paid",
+          invoiceNumber: "AAA-I0",
+          invoiceDate: "2026-05-15",
+          dueDate: "2026-05-22",
+          subTotal: "700.00",
+          totalTax: "0.00",
+          total: "700.00",
+          outstanding: "0.00",
+        },
+      ],
+      balance: { opening: "1000.00", closing: "1700.00" },
+    })
+    const r = run(input)
+    const { months } = payoutBuckets(r, formatMoney)
+    months.forEach((b, i) => {
+      expect(b.totalIn).toBe(r.months[i].invoicesLanding)
+    })
+    expect(months[0].received).toBe("700.00")
+    expect(Number(months[0].raised) + Number(months[0].predicted)).toBe(
+      Number(months[0].totalIn)
+    )
+  })
+
+  it("leaving an invoice out changes the totals, not its contractor cost", () => {
+    const before = buckets().months[0]
+    const after = buckets({
+      expectations: [{ invoiceKey: "inv1", excluded: true, expectedOn: null }],
+    }).months[0]
+    expect(Number(after.totalIn)).toBe(Number(before.totalIn) - 15000)
+    expect(Number(after.each)).toBe(Number(before.each) - 6900)
+    expect(after.leftOut).toEqual({
+      count: 1,
+      worth: "15000.00",
+      each: "6900.00",
+    })
+    const clientTotal = (b: typeof before) =>
+      b.clients.find((c) => c.client === "ALPHA HOLDINGS LTD")!
+    expect(Number(clientTotal(after).total)).toBe(
+      Number(clientTotal(before).total) - 15000
+    )
+    const row = find(after, "inv1").row
+    expect(row.included).toBe(false)
+    expect(row.contractorCost).toBe(find(before, "inv1").row.contractorCost)
+    // Still in its month, for putting back.
+    expect(find(after, "inv1").each).toBe("6900.00")
+  })
+
+  it("groups by the Xero client, with the most invoices first", () => {
+    const june = buckets().months[0]
+    expect(june.clients.map((c) => c.client)).toEqual([
+      "ALPHA HOLDINGS LTD",
+      "Beta Partners",
+    ])
+    expect(june.clients[0].invoices.length).toBeGreaterThan(
+      june.clients[1].invoices.length
+    )
+  })
+
+  it("splits each month by client, adding up to its total", () => {
+    const { months } = buckets()
+    const june = months[0]
+    expect(june.segments.map((x) => x.label)).toEqual([
+      "ALPHA HOLDINGS LTD",
+      "Beta Partners",
+    ])
+    expect(june.segments[0].amount).toBe("19500.00")
+    expect(june.segments[1].amount).toBe("2000.00")
+    expect(june.segments[0].percentLabel).toBe(91)
+    expect(june.segments.reduce((t, x) => t + x.percent, 0)).toBeCloseTo(100, 1)
+    // The same client keeps its colour from month to month.
+    const slot = (m: (typeof months)[number], label: string) =>
+      m.segments.find((x) => x.label === label)?.colorSlot
+    expect(slot(months[1], "ALPHA HOLDINGS LTD")).toBe(
+      slot(june, "ALPHA HOLDINGS LTD")
+    )
+  })
+
+  it("leaves a left-out invoice out of the split", () => {
+    const june = buckets({
+      expectations: [{ invoiceKey: "inv1", excluded: true, expectedOn: null }],
+    }).months[0]
+    expect(june.segments.find((x) => x.label.startsWith("ALPHA"))!.amount).toBe(
+      "4500.00"
+    )
+  })
+
+  it("keeps every client and the same order, whatever's ticked", () => {
+    const shape = (b: ReturnType<typeof buckets>["months"][number]) => ({
+      clients: b.clients.map((c) => [
+        c.client,
+        c.invoices.map((i) => i.row.key),
+      ]),
+      legend: b.segments.map((x) => [x.key, x.colorSlot]),
+    })
+    const before = buckets().months[0]
+    const alphaKeys = before.clients[0].invoices.map((i) => i.row.key)
+    const after = buckets({
+      expectations: alphaKeys.map((invoiceKey) => ({
+        invoiceKey,
+        excluded: true,
+        expectedOn: null,
+      })),
+    }).months[0]
+    expect(shape(after)).toEqual(shape(before))
+    expect(after.segments.map((x) => x.label)).toEqual(
+      after.clients.map((c) => c.client)
+    )
+    // Alpha is all left out: still listed, at nothing.
+    expect(after.segments[0]).toMatchObject({
+      label: "ALPHA HOLDINGS LTD",
+      amount: "0.00",
+      percent: 0,
+      percentLabel: 0,
+    })
+  })
+
+  it("shows an empty bar and 0% with everything left out, not an error", () => {
+    const keys = buckets()
+      .months[0].clients.flatMap((c) => c.invoices)
+      .map((i) => i.row.key)
+    const june = buckets({
+      expectations: keys.map((invoiceKey) => ({
+        invoiceKey,
+        excluded: true,
+        expectedOn: null,
+      })),
+    }).months[0]
+    expect(june.totalIn).toBe("0.00")
+    expect(june.segments.length).toBeGreaterThan(0)
+    expect(june.segments.every((x) => x.percent === 0)).toBe(true)
+    expect(june.segments.every((x) => x.percentLabel === 0)).toBe(true)
+  })
+
+  it("shows money already received as its own part of the split", () => {
+    const paid: CashLine = {
+      ...raw({
+        sourceId: "pay",
+        source: "payment",
+        direction: "in",
+        date: "2026-06-01",
+        amount: "500.00",
+        salesInvoiceId: "paid",
+      }),
+      kind: "client_payment",
+      personId: null,
+    }
+    const june = buckets({
+      cash: [...baseInput().cash, paid],
+      invoices: [
+        ...baseInput().invoices,
+        {
+          invoiceId: "paid",
+          invoiceNumber: "AAA-I0",
+          invoiceDate: "2026-05-01",
+          dueDate: "2026-05-22",
+          subTotal: "500.00",
+          totalTax: "0.00",
+          total: "500.00",
+          outstanding: "0.00",
+        },
+      ],
+    }).months[0]
+    expect(june.segments.at(-1)).toMatchObject({
+      label: "Already received",
+      amount: "500.00",
+      colorSlot: null,
+    })
+  })
+
+  it("folds clients beyond the colours into Other", () => {
+    const projects = ["A", "B", "C", "D", "E", "F"].map((x, i) => ({
+      ...PROJECT_A,
+      id: `p${x}`,
+      code: x,
+      name: `Project ${x}`,
+      xeroContactId: `c${x}`,
+      solidtimeProjectIds: [],
+      invoiceAnchorDate: null,
+      chargeRateGbp: `${100 * (i + 1)}.00`,
+    }))
+    const june = buckets({
+      projects,
+      overrides: [],
+      entries: [],
+      contacts: projects.map((p) => ({ id: p.xeroContactId, name: p.name })),
+      invoices: projects.map((p, i) => ({
+        invoiceId: `i${i}`,
+        contactId: p.xeroContactId,
+        invoiceNumber: `${p.code}-I1`,
+        invoiceDate: "2026-05-20",
+        dueDate: "2026-06-10",
+        subTotal: `${(i + 1) * 100}.00`,
+        totalTax: "0.00",
+        total: `${(i + 1) * 100}.00`,
+        outstanding: `${(i + 1) * 100}.00`,
+      })),
+    }).months[0]
+    expect(june.segments).toHaveLength(6)
+    expect(june.segments.at(-1)).toMatchObject({
+      label: "Other clients",
+      amount: "100.00",
+      colorSlot: null,
+    })
+  })
+
+  it("shows an empty month as empty", () => {
+    const { months } = buckets({
+      invoices: [],
+      projects: [],
+      overrides: [],
+    })
+    expect(months[0]).toMatchObject({
+      totalIn: "0.00",
+      segments: [],
+      clients: [],
+      leftOut: null,
+    })
+    const june = buckets().months[0]
+    expect(Number(june.raised)).toBe(15000)
+    expect(Number(june.predicted)).toBe(6500)
+  })
+
+  it("drops a client prefix only when it repeats the client", () => {
+    expect(projectTitle("Alpha Portal", "ALPHA HOLDINGS LTD")).toBe("Portal")
+    expect(projectTitle("Beta", "BETA PARTNERS")).toBe("Beta")
+    expect(projectTitle("Gamma Site", "Beta Partners")).toBe("Gamma Site")
+  })
+
+  it("hides the zero parts of where a figure came from", () => {
+    const base = find(buckets().months[0], "inv1").row
+    const predicted = {
+      ...base,
+      status: "forecast" as const,
+      contractorCost: "2700.00",
+    }
+    const detail = (over: Partial<typeof predicted>) =>
+      invoiceDetail({ ...predicted, ...over }, formatMoney)
+    expect(detail({ trackedDays: "0.0000", forecastDays: "4.7300" })).toBe(
+      "4.73 days forecast, none tracked yet · cost £2,700"
+    )
+    expect(detail({ trackedDays: "3.7300", forecastDays: "2.3600" })).toBe(
+      "From 3.73 tracked + 2.36 forecast days · cost £2,700"
+    )
+    expect(invoiceDetail(base, formatMoney)).toBe("Contractor cost £9,000")
+    expect(
+      invoiceDetail({ ...base, contractorCost: "0.00" }, formatMoney)
+    ).toBe("No contractor cost")
+  })
+})
+
+describe("in and out", () => {
+  const line = (
+    kind: CashLine["kind"],
+    date: string,
+    amount: string,
+    direction: "in" | "out" = "out"
+  ): CashLine => ({
+    ...raw({ sourceId: `${kind}-${date}`, date, amount, direction }),
+    kind,
+    personId: null,
+  })
+  const months = (r: ReturnType<typeof run>) => inOutMonths(r, formatMoney)
+
+  it("leaves dividends and transfers out of a past month", () => {
+    const [may] = months(
+      run(
+        baseInput({
+          cash: [
+            line("client_payment", "2026-05-10", "5000.00", "in"),
+            line("other_in", "2026-05-11", "10.00", "in"),
+            line("backstop_in", "2026-05-12", "999.00", "in"),
+            line("contractor_payment", "2026-05-13", "1000.00"),
+            line("running_cost", "2026-05-14", "200.00"),
+            line("director_salary", "2026-05-15", "2000.00"),
+            line("dividend", "2026-05-16", "1500.00"),
+            line("set_aside", "2026-05-17", "400.00"),
+            line("other_transfer_out", "2026-05-18", "77.00"),
+          ],
+        })
+      )
+    )
+    expect(may).toMatchObject({
+      month: "2026-05-01",
+      basis: "actual",
+      moneyInTotal: "5010.00",
+      moneyOutTotal: "3600.00",
+      left: "1410.00",
+      fromReserve: "999.00",
+    })
+    expect(may.moneyOut.map((r) => r.label)).toEqual([
+      "Contractors",
+      "Tax set-asides",
+      "Running costs",
+      "Director salaries",
+    ])
+  })
+
+  it("names past money in by Xero client", () => {
+    const paid = {
+      ...line("client_payment", "2026-05-10", "500.00", "in"),
+      salesInvoiceId: "inv1",
+    }
+    const [may] = months(
+      run(
+        baseInput({
+          cash: [paid],
+          invoices: baseInput().invoices.map((i) => ({
+            ...i,
+            contactId: "client-a",
+          })),
+        })
+      )
+    )
+    expect(may.moneyIn.map((r) => [r.label, r.amount])).toEqual([
+      ["ALPHA HOLDINGS LTD", "500.00"],
+    ])
+  })
+
+  it("uses the salary setting in future months, for every director", () => {
+    const rows = months(
+      run(baseInput({ settings: { ...baseInput().settings, months: 2 } }))
+    )
+    const july = rows.find((m) => m.month === "2026-07-01")!
+    expect(july.basis).toBe("forecast")
+    expect(july.moneyOut.find((r) => r.key === "salaries")!.amount).toBe(
+      "2000.00"
+    )
+    expect(rows.find((m) => m.month === "2026-06-01")!.basis).toBe("current")
+  })
+
+  it("doesn't count the month-end payout as money out", () => {
+    const june = months(run(baseInput())).find((m) => m.month === "2026-06-01")!
+    // 21,500 in; 9,000 bills, 1,960 set-asides, 290 running, 2,000 salaries, 500 one-off.
+    expect(june).toMatchObject({
+      moneyInTotal: "21500.00",
+      moneyOutTotal: "13750.00",
+      left: "7750.00",
+    })
+  })
+
+  it("shows money back from the tax reserve, without calling it income", () => {
+    const june = months(
+      run(
+        baseInput({
+          cash: [
+            ...baseInput().cash,
+            line("backstop_in", "2026-06-01", "4000.00", "in"),
+          ],
+          balance: { opening: "1000.00", closing: "5000.00" },
+        })
+      )
+    ).find((m) => m.month === "2026-06-01")!
+    expect(june.fromReserve).toBe("4000.00")
+    expect(june.moneyInTotal).toBe("21500.00")
+  })
+
+  it("counts salary already paid this month, not the setting on top", () => {
+    const june = months(
+      run(
+        baseInput({
+          cash: [
+            ...baseInput().cash,
+            line("director_salary", "2026-06-01", "2500.00"),
+          ],
+          balance: { opening: "1000.00", closing: "-1500.00" },
+        })
+      )
+    ).find((m) => m.month === "2026-06-01")!
+    expect(june.moneyOut.find((r) => r.key === "salaries")!.amount).toBe(
+      "2500.00"
+    )
+  })
+})
+
+describe("the overview", () => {
+  const view = (extra: Partial<ForecastInput> = {}) => {
+    const r = run(baseInput(extra))
+    return { r, buckets: overviewBuckets(r, formatMoney) }
+  }
+
+  it("adds up to the payout: left from the month, plus from the bank", () => {
+    const { r, buckets } = view()
+    const b = buckets[0]
+    const m = r.months[0]
+    expect(b.moneyInTotal).toBe(m.invoicesLanding)
+    expect(b.takeHome).toBe(m.takeHomePerDirector)
+    expect(b.closing).toBe(m.closing)
+    expect(b.payout).toBe("10650.00")
+    expect(b.fromBank).toBe("900.00")
+    expect(Number(b.left) + Number(b.fromBank)).toBe(Number(b.payout))
+  })
+
+  it("only lists rows that have an amount", () => {
+    const b = view().buckets[0]
+    expect(b.moneyOut.map((r) => r.label)).toEqual([
+      "Contractors",
+      "Tax set-asides",
+      "Running costs",
+      "Adjustments",
+    ])
+    expect(
+      view({ adjustments: [] }).buckets[0].moneyOut.map((r) => r.key)
+    ).toEqual(["contractors", "set_asides", "running"])
+  })
+
+  it("shows money back from the tax reserve as money in, and still adds up", () => {
+    const back: CashLine = {
+      ...raw({
+        sourceId: "b",
+        date: "2026-06-01",
+        amount: "600.00",
+        direction: "in",
+      }),
+      kind: "backstop_in",
+      personId: null,
+    }
+    const b = view({
+      cash: [...baseInput().cash, back],
+      balance: { opening: "1000.00", closing: "1600.00" },
+    }).buckets[0]
+    expect(b.moneyIn.find((r) => r.key === "backstop")!.amount).toBe("600.00")
+    expect(Number(b.left) + Number(b.fromBank)).toBe(Number(b.payout))
+  })
+
+  it("copes with a month where nothing moves", () => {
+    const b = view({
+      projects: [],
+      invoices: [],
+      overrides: [],
+      adjustments: [],
+      cash: [],
+      people: [DIRECTOR_A, DIRECTOR_B],
+      balance: { opening: "0.00", closing: "0.00" },
+    }).buckets[0]
+    expect(b.moneyOutTotal).toBe("0.00")
+    expect(b.moneyIn).toEqual([])
+    expect(b.left).toBe("0.00")
+  })
+})
+
+describe("the bills view", () => {
+  const stored = (over: Partial<ForecastInput["bills"][number]> = {}) => ({
+    id: "b1",
+    personId: "c1",
+    issuedOn: "2026-05-29",
+    periodStart: "2026-04-25",
+    periodEnd: "2026-05-29",
+    amountGbp: "9000.00",
+    dueOn: "2026-06-28",
+    payOrder: null,
+    plannedPayOn: null,
+    paidOn: null,
+    paidAmountGbp: null,
+    paidByBankTransactionId: null,
+    paidSource: null,
+    ...over,
+  })
+  const months2 = { settings: { ...baseInput().settings, months: 2 } }
+
+  it("buckets a bill by the month it's paid, and matches the engine's total", () => {
+    const r = run(baseInput(months2))
+    const { months } = billBuckets(r)
+    expect(months[0].total).toBe("9000.00")
+    expect(months[0].cards.map((c) => c.bill.issuedOn)).toEqual(["2026-05-29"])
+    r.months.forEach((m, i) => {
+      expect(Number(months[i].total)).toBe(-Number(m.contractorBills))
+    })
+  })
+
+  it("counts a bill planned for payout day in that month", () => {
+    const { months } = billBuckets(
+      run(baseInput({ bills: [stored({ plannedPayOn: "2026-06-30" })] }))
+    )
+    expect(months[0].cards[0].payOn).toBe("2026-06-30")
+  })
+
+  it("flags a bill paid after its due date as late", () => {
+    const late = billBuckets(
+      run(
+        baseInput({
+          bills: [stored({ plannedPayOn: "2026-06-30", dueOn: "2026-06-10" })],
+        })
+      )
+    ).months[0].cards[0]
+    expect(late.late).toBe(true)
+    const onTime = billBuckets(run(baseInput())).months[0].cards[0]
+    expect(onTime.late).toBe(false)
+  })
+
+  it("splits entered from forecast, and reports money already paid", () => {
+    const paidLine: CashLine = {
+      ...raw({ sourceId: "t9", date: "2026-06-01", amount: "400.00" }),
+      kind: "contractor_payment",
+      personId: "c1",
+    }
+    const { months } = billBuckets(
+      run(
+        baseInput({
+          bills: [stored()],
+          cash: [...baseInput().cash, paidLine],
+          balance: { opening: "1000.00", closing: "600.00" },
+        })
+      )
+    )
+    expect(months[0]).toMatchObject({
+      entered: "9000.00",
+      forecast: "0.00",
+      alreadyPaid: "400.00",
+      total: "9400.00",
+    })
+    expect(months[0].parts.at(-1)).toMatchObject({ label: "Already paid" })
+  })
+
+  it("warns about the worst pay day, using the engine's balance", () => {
+    const { months } = billBuckets(
+      run(
+        baseInput({
+          projects: [],
+          invoices: [],
+          overrides: [],
+          adjustments: [],
+          cash: [],
+          entries: [],
+          balance: { opening: "100.00", closing: "100.00" },
+          bills: [stored({ dueOn: "2026-06-10" })],
+        })
+      )
+    )
+    expect(months[0].danger).toEqual({
+      balance: "-8900.00",
+      personName: "Casey Contractor",
+      date: "2026-06-10",
+    })
+    expect(billBuckets(run(baseInput())).months[0].danger).toBeNull()
+  })
+
+  it("lists paid bills newest first, and gives contractors fixed colours in name order", () => {
+    const r = run(
+      baseInput({
+        people: [
+          { ...CONTRACTOR, id: "c2", name: "Zed", solidtimeUserId: null },
+          CONTRACTOR,
+          DIRECTOR_A,
+          DIRECTOR_B,
+        ],
+        payRates: [
+          { personId: "c1", projectId: null, dayRateGbp: "300.00" },
+          { personId: "c2", projectId: null, dayRateGbp: "300.00" },
+        ],
+        bills: [
+          stored({
+            id: "old",
+            issuedOn: "2026-04-24",
+            paidOn: "2026-05-01",
+            paidAmountGbp: "1.00",
+            paidSource: "manual",
+          }),
+          stored({
+            paidOn: "2026-05-30",
+            paidAmountGbp: "1.00",
+            paidSource: "manual",
+          }),
+        ],
+      })
+    )
+    expect(billBuckets(r).paid.map((c) => c.payOn)).toEqual([
+      "2026-05-30",
+      "2026-05-01",
+    ])
+    expect(r.contractors).toEqual(["Casey Contractor", "Zed"])
+    expect(contractorColour(r, "Casey Contractor")).toBe("var(--chart-1)")
+    expect(contractorColour(r, "Zed")).toBe("var(--chart-2)")
+  })
+})
+
+describe("merging a timeline day", () => {
+  const row = (over: Partial<TimelineRow>): TimelineRow => ({
+    date: "2026-06-01",
+    label: "x",
+    category: "money_in",
+    source: "forecast",
+    actual: false,
+    moneyIn: null,
+    moneyOut: null,
+    balance: "0.00",
+    ...over,
+  })
+
+  it("merges the same category, direction and basis into one chip", () => {
+    const chips = mergeDay([
+      row({ label: "Forecast invoice: A", moneyIn: "100.00" }),
+      row({ label: "Forecast invoice: B", moneyIn: "50.50" }),
+      row({ label: "Set-aside: A", category: "set_asides", moneyOut: "20.00" }),
+      row({ label: "Set-aside: B", category: "set_asides", moneyOut: "10.00" }),
+    ])
+    expect(chips.map((c) => [c.label, c.amount, c.direction])).toEqual([
+      ["2 predicted invoices", "150.50", "in"],
+      ["2 set-asides", "30.00", "out"],
+    ])
+    expect(chips[0].events).toEqual([
+      { label: "Forecast invoice: A", amount: "100.00" },
+      { label: "Forecast invoice: B", amount: "50.50" },
+    ])
+  })
+
+  it("keeps actual and forecast apart, and a lone event keeps its own label", () => {
+    const chips = mergeDay([
+      row({
+        label: "Invoice due: AAA-I1",
+        source: "actual",
+        moneyIn: "100.00",
+      }),
+      row({ label: "Forecast invoice: B", moneyIn: "50.00" }),
+      row({
+        label: "Contractor bill: Casey",
+        category: "contractors",
+        source: "tracked",
+        moneyOut: "5.00",
+      }),
+    ])
+    expect(chips.map((c) => [c.label, c.predicted])).toEqual([
+      ["Invoice AAA-I1", false],
+      ["Invoice B", true],
+      ["Bill: Casey", true],
+    ])
+  })
+
+  it("places the balance bar around a zero tick", () => {
+    const v = timelineView(run(baseInput()))
+    const day = v.months[0].days[0]
+    expect(day.bar.negative).toBe(false)
+    expect(day.bar.left).toBe(v.zeroAt)
+    expect(day.bar.width).toBeGreaterThan(0)
+  })
+
+  it("shows nothing going wrong with an empty month", () => {
+    const v = timelineView(
+      run(
+        baseInput({
+          projects: [],
+          invoices: [],
+          overrides: [],
+          adjustments: [],
+          cash: [],
+          people: [],
+          payRates: [],
+          balance: { opening: "0.00", closing: "0.00" },
+        })
+      )
+    )
+    expect(v.zeroAt).toBe(0)
+    expect(v.months[0].days).toEqual([])
+  })
+})
+
 describe("the timeline view", () => {
   it("splits money in and out, and finds the month's lowest balance", () => {
     const [june] = timelineMonths(run(baseInput()))
@@ -1693,14 +2567,6 @@ describe("the accuracy view", () => {
   })
 })
 
-describe("the bills chart", () => {
-  it("puts a bill in the month it's expected to be paid", () => {
-    const c = billsChart(run(baseInput()))
-    expect(c.series).toEqual([{ key: "c0", label: "Casey Contractor" }])
-    expect(c.months[0].c0).toBe(9000)
-  })
-})
-
 describe("charts", () => {
   const charts = () => {
     const r = run(baseInput())
@@ -1721,57 +2587,11 @@ describe("charts", () => {
   })
 
   it("adds up to the breakdown's figures", () => {
-    const { c, r } = charts()
-    const june = r.months[0]
-    expect(total(c.moneyIn.months[0])).toBe(Number(june.invoicesLanding))
+    const { c } = charts()
     expect(total(c.moneyOut.months[0])).toBe(10650 + 9000 + 1960 + 290 + 500)
     expect(c.moneyOut.months[0].directors).toBe(10650)
     // The adjustment has no group of its own.
     expect(c.moneyOut.months[0].other).toBe(500)
-  })
-
-  it("names projects in a fixed order, and folds the rest into Other", () => {
-    const extra = ["pc", "pd", "pe"].map((id, i) => ({
-      ...PROJECT_A,
-      id,
-      code: `C${i}`,
-      name: `Project ${"XYZ"[i]}`,
-      solidtimeProjectIds: [],
-    }))
-    const inv = (id: string, number: string, amount: string) => ({
-      invoiceId: id,
-      invoiceNumber: number,
-      invoiceDate: "2026-05-20",
-      dueDate: "2026-06-10",
-      subTotal: amount,
-      totalTax: "0.00",
-      total: amount,
-      outstanding: amount,
-    })
-    const c = forecastCharts(
-      run(
-        baseInput({
-          projects: [PROJECT_A, PROJECT_B, ...extra],
-          overrides: [],
-          entries: [],
-          invoices: [
-            inv("1", "AAA-I1", "500.00"),
-            inv("2", "BBB-I1", "400.00"),
-            inv("3", "C0-I1", "300.00"),
-            inv("4", "C1-I1", "200.00"),
-            inv("5", "C2-I1", "100.00"),
-          ],
-        })
-      )
-    )
-    expect(c.moneyIn.series.map((s) => s.label)).toEqual([
-      "Project Alpha",
-      "Project Beta",
-      "Project X",
-      "Project Y",
-      "Other",
-    ])
-    expect(c.moneyIn.months[0].other).toBe(100)
   })
 })
 

@@ -81,6 +81,13 @@ function ProjectForm({
           defaultValue={row?.invoiceIntervalDays ?? 14}
         />
         <Field
+          name="endDate"
+          label="End date"
+          hint="Optional. No work is forecast after this"
+          type="date"
+          defaultValue={row?.endDate ?? ""}
+        />
+        <Field
           name="paymentTermsDays"
           label="Payment terms (days)"
           type="number"

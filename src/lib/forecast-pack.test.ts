@@ -13,6 +13,7 @@ const input: ForecastInput = {
     lookbackDays: 42,
     months: 1,
     bufferGbp: 100,
+    directorSalaryGbp: 0,
     startDate: "2026-04-21",
     vatRegisteredFrom: null,
     vatRate: 0.2,
@@ -74,6 +75,7 @@ const input: ForecastInput = {
   taxReserveBalance: "5000.00",
   expectations: [],
   customInvoices: [],
+  contacts: [],
 }
 
 function pack(extra: Partial<ForecastPackInput> = {}) {
