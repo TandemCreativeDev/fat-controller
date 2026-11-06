@@ -63,3 +63,8 @@ export function formatDayShort(isoDate: string): string {
     timeZone: "UTC",
   })
 }
+
+/** "3.2500" → "3.25", for display. */
+export function formatDays(days: string): string {
+  return Number(days).toFixed(2)
+}

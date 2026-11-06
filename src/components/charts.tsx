@@ -57,7 +57,7 @@ function configFor(series: Series[]): ChartConfig {
 const axisProps = {
   tickLine: false,
   axisLine: false,
-  tick: { fill: "var(--muted-foreground)", fontSize: 11 },
+  tick: { fill: "var(--muted-foreground)", fontSize: 12 },
 } as const
 
 function Tooltip({ format, config }: { format: Format; config: ChartConfig }) {

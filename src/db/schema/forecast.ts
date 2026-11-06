@@ -196,6 +196,21 @@ export const forecastOverride = pgTable(
 )
 
 /**
+ * An invoice only the directors know about yet, added to the forecast by hand.
+ * It lasts until a director deletes it: when the real invoice exists, delete this.
+ */
+export const customInvoice = pgTable("custom_invoice", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  label: text("label").notNull(),
+  /** Before VAT. */
+  amountGbp: money("amount_gbp").notNull(),
+  contractorCostGbp: money("contractor_cost_gbp").notNull().default("0"),
+  landsOn: date("lands_on").notNull(),
+  note: text("note"),
+  createdBy: createdBy(),
+})
+
+/**
  * A director's what-if on money expected in: leave an invoice out, or move when it
  * lands. Keyed by the Xero invoice ID, or `<project id>|<date>` for a forecast one.
  */

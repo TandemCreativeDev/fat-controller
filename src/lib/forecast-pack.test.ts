@@ -73,6 +73,7 @@ const input: ForecastInput = {
   manualBalance: null,
   taxReserveBalance: "5000.00",
   expectations: [],
+  customInvoices: [],
 }
 
 function pack(extra: Partial<ForecastPackInput> = {}) {

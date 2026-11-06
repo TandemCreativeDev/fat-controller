@@ -184,6 +184,15 @@ export type SalesInvoiceInput = {
   outstanding: string
 }
 
+export type CustomInvoiceInput = {
+  id: string
+  label: string
+  amountGbp: string
+  contractorCostGbp: string
+  landsOn: string
+  note: string | null
+}
+
 export type InvoiceExpectationInput = {
   invoiceKey: string
   excluded: boolean
@@ -450,6 +459,9 @@ export type BuiltInvoice = {
   overrideDays: string | null
   overrideAmount: string | null
   overrideNote: string | null
+  /** Set on a one-off invoice a director added. */
+  customId?: string
+  customNote?: string | null
 }
 
 /** One invoice not yet fully paid, and when the forecast expects its money. */
@@ -459,7 +471,7 @@ export type ExpectedMoney = {
   invoiceNumber: string | null
   invoiceDate: string
   dueDate: string
-  status: "overdue" | "raised" | "late" | "forecast"
+  status: "overdue" | "raised" | "late" | "forecast" | "one-off"
   /** What's still to land, including any VAT. */
   amount: string
   /** Null when a director has left it out. */
@@ -576,6 +588,8 @@ export type ForecastInput = {
   taxReserveBalance: string | null
   /** What-ifs on money expected in. */
   expectations: InvoiceExpectationInput[]
+  /** One-off invoices added by a director. */
+  customInvoices: CustomInvoiceInput[]
 }
 
 export type ForecastResult =
@@ -997,6 +1011,48 @@ function buildInvoices(
       overrideNote: null,
       factor: new D(1),
       forecastVat: ZERO,
+    })
+  }
+
+  // One-off invoices a director added: their money and set-aside, nothing tracked.
+  for (const c of input.customInvoices) {
+    const amount = penny(c.amountGbp)
+    const cost = penny(c.contractorCostGbp)
+    const registered =
+      settings.vatRegisteredFrom !== null &&
+      c.landsOn >= settings.vatRegisteredFrom
+    const vat = registered ? penny(amount.times(settings.vatRate)) : ZERO
+    out.push({
+      key: `custom:${c.id}`,
+      customId: c.id,
+      customNote: c.note,
+      projectId: null,
+      projectName: c.label,
+      status: "forecast",
+      linked: true,
+      invoiceId: null,
+      invoiceNumber: null,
+      invoiceDate: c.landsOn,
+      dueDate: c.landsOn,
+      dueDateRaw: c.landsOn,
+      periodStart: c.landsOn,
+      periodEnd: c.landsOn,
+      trackedDays: "0.0000",
+      forecastDays: "0.0000",
+      totalDays: "0.0000",
+      amount: money(amount),
+      contractorCost: money(cost),
+      setAside: money(setAsideFor(amount, cost)),
+      total: money(amount.plus(vat)),
+      totalTax: money(vat),
+      outstanding: money(amount.plus(vat)),
+      source: "manual",
+      hasOverride: false,
+      overrideDays: null,
+      overrideAmount: null,
+      overrideNote: null,
+      factor: new D(1),
+      forecastVat: vat,
     })
   }
 
@@ -1450,7 +1506,7 @@ function expectedMoney(
       (i) =>
         i.status !== "missed" &&
         new D(i.outstanding).gt(0) &&
-        i.invoiceDate <= displayEnd
+        (i.customId !== undefined || i.invoiceDate <= displayEnd)
     )
     .map((i): ExpectedMoney => {
       const e = expectations.get(i.key)
@@ -1461,8 +1517,9 @@ function expectedMoney(
         invoiceNumber: i.invoiceNumber,
         invoiceDate: i.invoiceDate,
         dueDate: i.dueDateRaw,
-        status:
-          i.status !== "raised"
+        status: i.customId
+          ? "one-off"
+          : i.status !== "raised"
             ? i.status === "late"
               ? "late"
               : "forecast"
@@ -1579,8 +1636,9 @@ function prepare(
       date: landing,
       amount: outstanding,
       type: "expected_invoice",
-      label:
-        inv.status === "late"
+      label: inv.customId
+        ? `One-off invoice: ${name}`
+        : inv.status === "late"
           ? `Invoice (late): ${name}`
           : inv.status === "raised"
             ? `Invoice due: ${name}`
@@ -2173,6 +2231,300 @@ export function accuracyRows(
       }
     })
     .sort((a, b) => b.invoiceDate.localeCompare(a.invoiceDate))
+}
+
+// ------------------------------------------------------------------ money in table
+
+export type MoneyInRow = {
+  key: string
+  projectId: string | null
+  projectName: string | null
+  invoiceNumber: string | null
+  invoiceDate: string
+  dueDate: string
+  periodStart: string
+  periodEnd: string
+  trackedDays: string
+  forecastDays: string
+  /** Days after any override. */
+  totalDays: string
+  amount: string
+  contractorCost: string
+  landsOn: string
+  status: ExpectedMoney["status"]
+  included: boolean
+  expectedOn: string | null
+  note: string | null
+  hasOverride: boolean
+  overrideDays: string | null
+  overrideAmount: string | null
+  overrideNote: string | null
+  /** Forecast invoices can have their days or amount changed; raised ones can't. */
+  canOverride: boolean
+  /** Set on a one-off invoice, with its figures before VAT for editing. */
+  custom: { id: string; amount: string; cost: string; landsOn: string } | null
+  customNote: string | null
+}
+
+export type MoneyInGroup = {
+  kind: "month" | "later"
+  /** The first of the month, for a month group. */
+  month: string | null
+  /** Client money that has already landed this month, so isn't listed. */
+  received: string | null
+  rows: MoneyInRow[]
+  totalAmount: string
+  totalCost: string
+}
+
+/**
+ * Every unpaid and forecast invoice in one list, grouped by the month its money
+ * lands. Each month's total equals "Invoices landing" in the breakdown.
+ */
+export function moneyInTable(
+  result: Extract<ForecastResult, { blocked: false }>
+): MoneyInGroup[] {
+  const { today, months, invoices, expectedMoney } = result
+  const end = monthEnd(months.at(-1)!.month)
+  const expected = new Map(expectedMoney.map((m) => [m.key, m]))
+
+  const rows: MoneyInRow[] = invoices.flatMap((inv) => {
+    if (inv.status === "missed") return []
+    if (!inv.customId && inv.invoiceDate > end) return []
+    const m = expected.get(inv.key)
+    // A forecast invoice at £0 stays listed, so its override can be changed back.
+    if (!m && inv.status === "raised") return []
+    const wanted = m?.expectedOn ?? inv.dueDate
+    const wouldLand = wanted > today ? wanted : today
+    return [
+      {
+        key: inv.key,
+        projectId: inv.projectId,
+        projectName: inv.projectName,
+        invoiceNumber: inv.invoiceNumber,
+        invoiceDate: inv.invoiceDate,
+        dueDate: inv.dueDate,
+        periodStart: inv.periodStart,
+        periodEnd: inv.periodEnd,
+        trackedDays: inv.trackedDays,
+        forecastDays: inv.forecastDays,
+        totalDays: inv.totalDays,
+        amount: m?.amount ?? "0.00",
+        contractorCost: inv.contractorCost,
+        // A left-out invoice keeps its place, at the date it would have landed.
+        landsOn: m?.landsOn ?? wouldLand,
+        status: m?.status ?? (inv.status === "late" ? "late" : "forecast"),
+        included: m?.included ?? true,
+        expectedOn: m?.expectedOn ?? null,
+        note: m?.note ?? null,
+        hasOverride: inv.hasOverride,
+        overrideDays: inv.overrideDays,
+        overrideAmount: inv.overrideAmount,
+        overrideNote: inv.overrideNote,
+        canOverride: inv.status !== "raised" && inv.projectId !== null,
+        custom: inv.customId
+          ? {
+              id: inv.customId,
+              amount: inv.amount,
+              cost: inv.contractorCost,
+              landsOn: inv.invoiceDate,
+            }
+          : null,
+        customNote: inv.customNote ?? null,
+      },
+    ]
+  })
+
+  const group = (
+    kind: MoneyInGroup["kind"],
+    month: string | null,
+    list: MoneyInRow[],
+    received: Dec | null
+  ): MoneyInGroup => {
+    // Left-out rows stay listed, but only counted ones add up.
+    const counted = list.filter((r) => r.included)
+    const amounts = sum(counted.map((r) => new D(r.amount)))
+    return {
+      kind,
+      month,
+      received: received === null ? null : money(received),
+      rows: [...list].sort((a, b) => a.landsOn.localeCompare(b.landsOn)),
+      totalAmount: money(amounts.plus(received ?? ZERO)),
+      totalCost: money(sum(counted.map((r) => new D(r.contractorCost)))),
+    }
+  }
+
+  const groups = months.map((m) => {
+    const list = rows.filter((r) => monthStart(r.landsOn) === m.month)
+    const listed = sum(
+      list.filter((r) => r.included).map((r) => new D(r.amount))
+    )
+    return group("month", m.month, list, new D(m.invoicesLanding).minus(listed))
+  })
+  const later = rows.filter((r) => r.landsOn > end)
+  if (later.length) groups.push(group("later", null, later, null))
+  return groups
+}
+
+// ------------------------------------------------------------------ timeline view
+
+export type TimelineCategory =
+  "money_in" | "contractors" | "set_asides" | "directors" | "running" | "other"
+
+const CATEGORY_OF: Record<EventType, TimelineCategory> = {
+  client_payment: "money_in",
+  expected_invoice: "money_in",
+  backstop_in: "other",
+  other_transfer_in: "other",
+  other_in: "other",
+  set_aside: "set_asides",
+  other_transfer_out: "other",
+  vat_payment: "other",
+  contractor_payment: "contractors",
+  contractor_bill: "contractors",
+  director_salary: "directors",
+  dividend: "directors",
+  director_payout: "directors",
+  running_cost: "running",
+  adjustment: "other",
+  manual_balance: "other",
+}
+
+export type TimelineRow = {
+  date: string
+  label: string
+  category: TimelineCategory
+  source: Source
+  actual: boolean
+  moneyIn: string | null
+  moneyOut: string | null
+  balance: string
+}
+
+export type TimelineMonth = {
+  month: string
+  totalIn: string
+  totalOut: string
+  closing: string
+  lowest: string
+  lowestOn: string
+  rows: TimelineRow[]
+}
+
+/** The timeline by month, each with the figures worth seeing before opening it. */
+export function timelineMonths(
+  result: Extract<ForecastResult, { blocked: false }>
+): TimelineMonth[] {
+  return result.months.map((m) => {
+    const events = result.timeline.filter((e) => monthStart(e.date) === m.month)
+    const amounts = events.map((e) => new D(e.amount))
+    let lowest = new D(m.opening)
+    let lowestOn = m.month
+    for (const e of events)
+      if (new D(e.balance).lt(lowest)) {
+        lowest = new D(e.balance)
+        lowestOn = e.date
+      }
+    return {
+      month: m.month,
+      totalIn: money(sum(amounts.filter((x) => x.gt(0)))),
+      totalOut: money(sum(amounts.filter((x) => x.lt(0))).negated()),
+      closing: m.closing,
+      lowest: money(lowest),
+      lowestOn,
+      rows: events.map((e) => {
+        const amount = new D(e.amount)
+        return {
+          date: e.date,
+          label: e.label,
+          category: CATEGORY_OF[e.type],
+          source: e.source,
+          actual: e.actual,
+          moneyIn: amount.gt(0) ? money(amount) : null,
+          moneyOut: amount.lt(0) ? money(amount.negated()) : null,
+          balance: e.balance,
+        }
+      }),
+    }
+  })
+}
+
+// ------------------------------------------------------------------ accuracy view
+
+export type AccuracySummary = {
+  compared: number
+  /** Average size of the miss, ignoring direction. Null with nothing to compare. */
+  averageMiss14: number | null
+  averageMiss7: number | null
+  /** Forecast above actual is positive overall, so it shows which way it leans. */
+  lean7: "over" | "under" | "even" | null
+  rows: AccuracyRow[]
+}
+
+/** Only invoices with a forecast to compare; the rest just say "nothing recorded". */
+export function accuracySummary(rows: AccuracyRow[]): AccuracySummary {
+  const compared = rows.filter(
+    (r) => r.forecast14 !== null || r.forecast7 !== null
+  )
+  const averageMiss = (pick: (r: AccuracyRow) => string | null) => {
+    const misses = compared.flatMap((r) => {
+      const f = pick(r)
+      if (f === null || new D(r.actual).isZero()) return []
+      return [new D(f).minus(r.actual).abs().div(r.actual)]
+    })
+    return misses.length
+      ? sum(misses).div(misses.length).toDecimalPlaces(4).toNumber()
+      : null
+  }
+  const net7 = sum(
+    compared.flatMap((r) =>
+      r.forecast7 === null ? [] : [new D(r.forecast7).minus(r.actual)]
+    )
+  )
+  const has7 = compared.some((r) => r.forecast7 !== null)
+  return {
+    compared: compared.length,
+    averageMiss14: averageMiss((r) => r.forecast14),
+    averageMiss7: averageMiss((r) => r.forecast7),
+    lean7: !has7 ? null : net7.gt(0) ? "over" : net7.lt(0) ? "under" : "even",
+    rows: compared,
+  }
+}
+
+// ------------------------------------------------------------------ bills chart
+
+/** Contractor money leaving each month, by person, whether paid or still expected. */
+export function billsChart(
+  result: Extract<ForecastResult, { blocked: false }>
+): {
+  series: { key: string; label: string }[]
+  months: ({ month: string } & Record<string, number | string>)[]
+} {
+  const people = [...new Set(result.bills.map((b) => b.personName))].sort()
+  const series = people.map((label, i) => ({ key: `c${i}`, label }))
+  return {
+    series,
+    months: result.months.map((m) => {
+      const row: { month: string } & Record<string, number | string> = {
+        month: m.month,
+      }
+      people.forEach((name, i) => {
+        row[`c${i}`] = sum(
+          result.bills
+            .filter((b) => {
+              const when = b.paidOn ?? b.expectedPayOn
+              return (
+                b.personName === name &&
+                when !== null &&
+                monthStart(when) === m.month
+              )
+            })
+            .map((b) => new D(b.paidAmount ?? b.amount))
+        ).toNumber()
+      })
+      return row
+    }),
+  }
 }
 
 // ------------------------------------------------------------------ charts

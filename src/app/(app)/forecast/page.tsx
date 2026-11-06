@@ -5,7 +5,7 @@ import { BalanceLine, MonthlyBars } from "@/components/charts"
 import { Field, SelectField } from "@/components/form-fields"
 import { PageHeader } from "@/components/page-header"
 import { StatTile } from "@/components/stat-tile"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { buttonVariants } from "@/components/ui/button"
 import {
   Card,
@@ -23,11 +23,12 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import {
+  accuracySummary,
+  billsChart,
   breakdownText,
   forecastCharts,
-  type BillPlan,
-  type BuiltInvoice,
-  type ExpectedMoney,
+  moneyInTable,
+  timelineMonths,
   type MonthBreakdown,
 } from "@/lib/forecast"
 import { getForecastPage, type ForecastPageData } from "@/lib/forecast-store"
@@ -36,47 +37,45 @@ import {
   formatDayShort,
   formatMonth,
   formatPence,
+  formatPercent,
 } from "@/lib/format"
 import { requireDirector } from "@/lib/session"
 import { cn } from "@/lib/utils"
 import {
-  clearHoldBack,
   clearManualBalance,
-  clearOverride,
-  deleteAdjustment,
-  deleteBill,
-  markBillPaid,
-  planBill,
-  saveAdjustment,
   saveBill,
-  saveExpectation,
-  saveHoldBack,
+  saveCustomInvoice,
   saveManualBalance,
-  saveOverride,
-  unmatchBill,
 } from "./actions"
+import { AdjustmentsTable, BillsTable, HoldBacksTable } from "./cash-tables"
 import { CopyButton } from "./copy-button"
+import { CustomInvoiceFields, MoneyInTable } from "./money-in-table"
 import { Timeline } from "./timeline"
 
 const isZero = (amount: string) => Number(amount) === 0
 
-function Tabs({ tab }: { tab: string }) {
-  const items = [
-    { key: "overview", label: "Forecast", href: "/forecast" },
-    { key: "money", label: "Money in and out", href: "/forecast?tab=money" },
-  ]
+const TABS = [
+  { key: "overview", label: "Overview" },
+  { key: "money-in", label: "Money in" },
+  { key: "bills", label: "Bills and cash" },
+  { key: "timeline", label: "Timeline" },
+  { key: "accuracy", label: "Accuracy" },
+] as const
+type TabKey = (typeof TABS)[number]["key"]
+
+function Tabs({ tab }: { tab: TabKey }) {
   return (
     <nav
       aria-label="Forecast sections"
-      className="flex gap-1 rounded-xl bg-black/30 p-1 text-xs ring-1 ring-violet-500/60"
+      className="flex flex-wrap gap-1 rounded-xl bg-black/30 p-1 text-sm ring-1 ring-violet-500/60"
     >
-      {items.map((t) => (
+      {TABS.map((t) => (
         <Link
           key={t.key}
-          href={t.href}
+          href={t.key === "overview" ? "/forecast" : `/forecast?tab=${t.key}`}
           aria-current={tab === t.key ? "page" : undefined}
           className={cn(
-            "rounded-lg px-2.5 py-1 font-medium text-muted-foreground hover:text-foreground",
+            "rounded-lg px-3 py-1.5 font-medium text-muted-foreground hover:text-foreground",
             tab === t.key &&
               "bg-violet-500/20 text-violet-100 ring-1 ring-violet-400/50"
           )}
@@ -137,15 +136,18 @@ function Warnings({ warnings }: { warnings: ForecastPageData["warnings"] }) {
   )
   return (
     <Alert variant={serious ? "destructive" : "default"}>
-      <AlertTitle>
-        {warnings.length} {warnings.length === 1 ? "thing" : "things"} to check
-      </AlertTitle>
       <AlertDescription>
-        <ul className="mt-1 flex max-h-64 flex-col gap-1 overflow-y-auto">
-          {warnings.map((w, i) => (
-            <li key={i}>{w.message}</li>
-          ))}
-        </ul>
+        <details open={serious}>
+          <summary className="cursor-pointer font-medium text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+            {warnings.length} {warnings.length === 1 ? "thing" : "things"} to
+            check
+          </summary>
+          <ul className="mt-2 flex list-disc flex-col gap-1 pl-5">
+            {warnings.map((w, i) => (
+              <li key={i}>{w.message}</li>
+            ))}
+          </ul>
+        </details>
       </AlertDescription>
     </Alert>
   )
@@ -186,29 +188,49 @@ function MonthTile({
   )
 }
 
+type BreakdownRow = [string, (m: MonthBreakdown) => string, boolean?]
+
+const BREAKDOWN: { title: string; rows: BreakdownRow[] }[] = [
+  { title: "", rows: [["Opening balance", (m) => m.opening, true]] },
+  {
+    title: "Money in",
+    rows: [
+      ["Invoices landing", (m) => m.invoicesLanding],
+      ["Back from tax reserve", (m) => m.backstopIn],
+      ["Other money in", (m) => m.otherIn],
+    ],
+  },
+  {
+    title: "Money out",
+    rows: [
+      ["Contractor bills", (m) => m.contractorBills],
+      ["Set-asides", (m) => m.setAsides],
+      ["Running costs", (m) => m.runningCosts],
+      ["VAT payments", (m) => m.vatPayments],
+      ["Other transfers out", (m) => m.otherTransfersOut],
+      ["Adjustments", (m) => m.adjustments],
+      ["Director salary and payouts", (m) => m.directorPay],
+    ],
+  },
+  {
+    title: "Result",
+    rows: [
+      ["Closing balance", (m) => m.closing, true],
+      ["VAT owed", (m) => m.vatOwed],
+      ["Hold-back", (m) => m.holdBack],
+      ["Take-home per director", (m) => m.takeHomePerDirector, true],
+    ],
+  },
+]
+
 function Breakdown({ months }: { months: MonthBreakdown[] }) {
-  const rows: [string, (m: MonthBreakdown) => string, boolean?][] = [
-    ["Opening balance", (m) => m.opening, true],
-    ["Invoices landing", (m) => m.invoicesLanding],
-    ["Money back from tax reserve", (m) => m.backstopIn],
-    ["Other money in", (m) => m.otherIn],
-    ["Contractor bills", (m) => m.contractorBills],
-    ["Set-asides", (m) => m.setAsides],
-    ["VAT payments", (m) => m.vatPayments],
-    ["Other transfers out", (m) => m.otherTransfersOut],
-    ["Running costs", (m) => m.runningCosts],
-    ["Adjustments", (m) => m.adjustments],
-    ["Director salary and payouts", (m) => m.directorPay],
-    ["Closing balance", (m) => m.closing, true],
-    ["VAT owed", (m) => m.vatOwed],
-    ["Hold-back", (m) => m.holdBack],
-    ["Take-home per director", (m) => m.takeHomePerDirector, true],
-  ]
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead />
+          <TableHead>
+            <span className="sr-only">Line</span>
+          </TableHead>
           {months.map((m) => (
             <TableHead key={m.month} className="text-right">
               {formatMonth(m.month)}
@@ -217,385 +239,305 @@ function Breakdown({ months }: { months: MonthBreakdown[] }) {
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.map(([label, get, strong]) => (
-          <TableRow key={label} className={cn(strong && "font-medium")}>
-            <TableCell>{label}</TableCell>
-            {months.map((m) => (
-              <TableCell key={m.month} className="text-right tabular-nums">
-                {formatPence(get(m))}
-              </TableCell>
-            ))}
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  )
-}
-
-function ExpectedMoneyIn({ rows }: { rows: ExpectedMoney[] }) {
-  if (rows.length === 0)
-    return <p className="text-sm text-muted-foreground">Nothing expected in.</p>
-  return (
-    <div className="flex flex-col gap-4">
-      {rows.map((m) => (
-        <div
-          key={m.key}
-          className={cn(
-            "flex flex-col gap-3 border-b border-border/60 pb-4 last:border-0",
-            !m.included && "opacity-60"
-          )}
-        >
-          <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-            <span className="font-medium">
-              {m.projectName ?? "No project"}
-              {m.invoiceNumber && ` · ${m.invoiceNumber}`}
-              <span
-                className={cn(
-                  "ml-2 text-xs font-normal text-muted-foreground",
-                  m.status === "overdue" && "text-destructive"
-                )}
-              >
-                {m.status}
-                {!m.included && ", left out"}
-                {m.expectedOn && ", date moved"}
-              </span>
-            </span>
-            <span className="font-medium tabular-nums">
-              {formatPence(m.amount)}
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Dated {formatDay(m.invoiceDate)}, due {formatDay(m.dueDate)}.{" "}
-            {m.landsOn
-              ? `Expected to land ${formatDay(m.landsOn)}.`
-              : "Not counted in the forecast."}
-          </p>
-          <div className="flex flex-wrap items-end gap-3">
-            <ActionForm
-              action={saveExpectation}
-              submit="Save date"
-              variant="outline"
-              className="flex-row flex-wrap items-end"
-            >
-              <input type="hidden" name="invoiceKey" value={m.key} />
-              <input
-                type="hidden"
-                name="excluded"
-                value={m.included ? "false" : "true"}
-              />
-              <Field
-                id={`lands-${m.key}`}
-                name="expectedOn"
-                label="Expected to land"
-                type="date"
-                className="w-40"
-                defaultValue={m.expectedOn ?? ""}
-              />
-              <Field
-                id={`money-note-${m.key}`}
-                name="note"
-                label="Note"
-                className="w-48"
-                defaultValue={m.note ?? ""}
-              />
-            </ActionForm>
-            <ActionForm
-              action={saveExpectation}
-              submit={m.included ? "Leave out" : "Put back"}
-              variant="ghost"
-            >
-              <input type="hidden" name="invoiceKey" value={m.key} />
-              <input
-                type="hidden"
-                name="excluded"
-                value={m.included ? "true" : "false"}
-              />
-              <input
-                type="hidden"
-                name="expectedOn"
-                value={m.expectedOn ?? ""}
-              />
-              <input type="hidden" name="note" value={m.note ?? ""} />
-            </ActionForm>
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function UpcomingInvoices({ invoices }: { invoices: BuiltInvoice[] }) {
-  return (
-    <div className="flex flex-col gap-4">
-      {invoices.map((inv) => (
-        <div
-          key={inv.key}
-          className="flex flex-col gap-3 border-b border-border/60 pb-4 last:border-0"
-        >
-          <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-            <span className="font-medium">
-              {inv.projectName ?? "No project"} · {formatDay(inv.invoiceDate)}
-              {inv.invoiceNumber && ` · ${inv.invoiceNumber}`}
-              <span className="ml-2 text-xs font-normal text-muted-foreground">
-                {inv.status}
-                {inv.hasOverride && ", override"}
-              </span>
-            </span>
-            <span className="font-medium tabular-nums">
-              {formatPence(inv.amount)}
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {formatDay(inv.periodStart)} to {formatDay(inv.periodEnd)}:{" "}
-            {Number(inv.trackedDays).toFixed(2)} days tracked,{" "}
-            {Number(inv.forecastDays).toFixed(2)} forecast. Contractor cost{" "}
-            {formatPence(inv.contractorCost)}, set-aside{" "}
-            {formatPence(inv.setAside)}.
-          </p>
-          {inv.status !== "raised" && inv.projectId && (
-            <div className="flex flex-wrap items-end gap-3">
-              <ActionForm
-                action={saveOverride}
-                submit="Override"
-                variant="outline"
-                className="flex-row flex-wrap items-end"
-              >
-                <input type="hidden" name="projectId" value={inv.projectId} />
-                <input type="hidden" name="periodEnd" value={inv.invoiceDate} />
-                <Field
-                  id={`days-${inv.key}`}
-                  name="days"
-                  label="Days"
-                  inputMode="decimal"
-                  className="w-24"
-                  defaultValue={inv.overrideDays ?? ""}
-                />
-                <Field
-                  id={`amount-${inv.key}`}
-                  name="amountGbp"
-                  label="or amount (£)"
-                  inputMode="decimal"
-                  className="w-28"
-                  defaultValue={inv.overrideAmount ?? ""}
-                />
-                <Field
-                  id={`note-${inv.key}`}
-                  name="note"
-                  label="Note"
-                  className="w-48"
-                  defaultValue={inv.overrideNote ?? ""}
-                />
-              </ActionForm>
-              {inv.hasOverride && (
-                <ActionForm
-                  action={clearOverride}
-                  submit="Clear"
-                  variant="ghost"
+        {BREAKDOWN.flatMap((section) => [
+          ...(section.title
+            ? [
+                <TableRow key={section.title} className="hover:bg-transparent">
+                  <TableCell
+                    colSpan={months.length + 1}
+                    className="pt-4 text-xs font-semibold tracking-[0.08em] text-muted-foreground uppercase"
+                  >
+                    {section.title}
+                  </TableCell>
+                </TableRow>,
+              ]
+            : []),
+          ...section.rows.map(([label, get, strong]) => (
+            <TableRow key={label} className={cn(strong && "font-semibold")}>
+              <TableCell>{label}</TableCell>
+              {months.map((m) => (
+                <TableCell
+                  key={m.month}
+                  className={cn(
+                    "text-right tabular-nums",
+                    isZero(get(m)) && "text-muted-foreground"
+                  )}
                 >
-                  <input type="hidden" name="projectId" value={inv.projectId} />
-                  <input
-                    type="hidden"
-                    name="periodEnd"
-                    value={inv.invoiceDate}
-                  />
-                </ActionForm>
-              )}
-            </div>
-          )}
-        </div>
-      ))}
-      {invoices.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          No invoices in this window. Add a client project in Settings.
-        </p>
-      )}
-    </div>
-  )
-}
-
-function Accuracy({ rows }: { rows: ForecastPageData["accuracy"] }) {
-  if (rows.length === 0)
-    return (
-      <p className="text-sm text-muted-foreground">
-        Nothing to compare yet. Each daily sync records the forecast, so this
-        fills in as invoices are raised.
-      </p>
-    )
-  const cell = (v: string | null) => (v === null ? "–" : formatPence(v))
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Invoice</TableHead>
-          <TableHead>Date</TableHead>
-          <TableHead className="text-right">Actual</TableHead>
-          <TableHead className="text-right">14 days before</TableHead>
-          <TableHead className="text-right">Difference</TableHead>
-          <TableHead className="text-right">7 days before</TableHead>
-          <TableHead className="text-right">Difference</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((r) => (
-          <TableRow key={r.invoiceId}>
-            <TableCell>{r.invoiceNumber}</TableCell>
-            <TableCell className="whitespace-nowrap">
-              {formatDay(r.invoiceDate)}
-            </TableCell>
-            <TableCell className="text-right tabular-nums">
-              {formatPence(r.actual)}
-            </TableCell>
-            <TableCell className="text-right tabular-nums">
-              {cell(r.forecast14)}
-            </TableCell>
-            <TableCell className="text-right tabular-nums">
-              {cell(r.difference14)}
-            </TableCell>
-            <TableCell className="text-right tabular-nums">
-              {cell(r.forecast7)}
-            </TableCell>
-            <TableCell className="text-right tabular-nums">
-              {cell(r.difference7)}
-            </TableCell>
-          </TableRow>
-        ))}
+                  {formatPence(get(m))}
+                </TableCell>
+              ))}
+            </TableRow>
+          )),
+        ])}
       </TableBody>
     </Table>
   )
 }
 
-function BillIdentity({ bill }: { bill: BillPlan }) {
+function OverviewTab({ data }: { data: Ready }) {
+  const { result } = data
+  const charts = forecastCharts(result)
   return (
     <>
-      <input type="hidden" name="personId" value={bill.personId} />
-      <input type="hidden" name="issuedOn" value={bill.issuedOn} />
-      <input type="hidden" name="periodStart" value={bill.periodStart} />
-      <input type="hidden" name="periodEnd" value={bill.periodEnd} />
-      <input type="hidden" name="amountGbp" value={bill.amount} />
+      <div className="grid gap-4 md:grid-cols-3">
+        {result.months.map((m) => (
+          <MonthTile
+            key={m.month}
+            month={m}
+            reserve={result.taxReserveBalance}
+          />
+        ))}
+      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Cash in the main account</CardTitle>
+          <CardDescription>
+            End-of-day balance: solid up to today, dashed for the forecast. It
+            should fall to about the buffer at each month-end payout; below zero
+            means a shortfall.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <BalanceLine
+            today={charts.today}
+            data={charts.balance.map((d) => ({
+              ...d,
+              label: formatDayShort(d.date),
+            }))}
+          />
+        </CardContent>
+      </Card>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Money in, by project</CardTitle>
+            <CardDescription>
+              Details are in the{" "}
+              <Link href="/forecast?tab=money-in" className="underline">
+                Money in
+              </Link>{" "}
+              tab
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <MonthlyBars
+              stacked
+              series={charts.moneyIn.series}
+              data={charts.moneyIn.months.map((m) => ({
+                ...m,
+                label: formatMonth(m.month),
+              }))}
+            />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Where the money goes</CardTitle>
+            <CardDescription>
+              Everything leaving the main account each month
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <MonthlyBars
+              stacked
+              series={charts.moneyOut.series}
+              data={charts.moneyOut.months.map((m) => ({
+                ...m,
+                label: formatMonth(m.month),
+              }))}
+            />
+          </CardContent>
+        </Card>
+      </div>
+      <Card>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+          <div>
+            <CardTitle>Breakdown by month</CardTitle>
+            <CardDescription>
+              Running costs are forecast at{" "}
+              {formatPence(result.runningCostAverage)} a month, the average of
+              the last three complete months.
+            </CardDescription>
+          </div>
+          <CopyButton text={breakdownText(result.months)} />
+        </CardHeader>
+        <CardContent>
+          <Breakdown months={result.months} />
+        </CardContent>
+      </Card>
     </>
   )
 }
 
-function BillRow({
-  bill,
-  payments,
-}: {
-  bill: BillPlan
-  payments: ForecastPageData["unlinkedPayments"]
-}) {
-  const key = `${bill.personId}-${bill.issuedOn}`
-  const mine = payments.filter((p) => p.personId === bill.personId)
+function MoneyInTab({ data }: { data: Ready }) {
+  const charts = forecastCharts(data.result)
   return (
-    <div className="flex flex-col gap-3 border-b border-border/60 pb-4 last:border-0">
-      <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-        <span className="font-medium">
-          {bill.personName} · issued {formatDay(bill.issuedOn)}
-          <span className="ml-2 text-xs font-normal text-muted-foreground">
-            {bill.status}, {bill.id ? "entered" : "forecast"}
-          </span>
-        </span>
-        <span className="font-medium tabular-nums">
-          {formatPence(bill.amount)}
-        </span>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {formatDay(bill.periodStart)} to {formatDay(bill.periodEnd)}. Due{" "}
-        {formatDay(bill.dueOn)}.
-        {bill.expectedPayOn &&
-          ` Expected to be paid ${formatDay(bill.expectedPayOn)}.`}
-        {bill.paidOn &&
-          ` Paid ${formatDay(bill.paidOn)}${bill.paidAmount ? `, ${formatPence(bill.paidAmount)}` : ""}.`}
-      </p>
-      {bill.status === "unpaid" ? (
-        <div className="flex flex-wrap items-end gap-6">
-          <ActionForm
-            action={planBill}
-            submit="Set plan"
-            variant="outline"
-            className="flex-row flex-wrap items-end"
-          >
-            <BillIdentity bill={bill} />
-            <Field
-              id={`order-${key}`}
-              name="payOrder"
-              label="Pay order"
-              type="number"
-              className="w-20"
-              defaultValue={bill.payOrder ?? ""}
-            />
-            <Field
-              id={`plan-${key}`}
-              name="plannedPayOn"
-              label="Planned date"
-              type="date"
-              className="w-40"
-              defaultValue={bill.plannedPayOn ?? ""}
-            />
-          </ActionForm>
-          <ActionForm
-            action={markBillPaid}
-            submit="Mark paid"
-            variant="outline"
-            className="flex-row flex-wrap items-end"
-          >
-            <BillIdentity bill={bill} />
-            <Field
-              id={`paid-${key}`}
-              name="paidOn"
-              label="Paid on"
-              type="date"
-              className="w-40"
-              required
-            />
-            <SelectField
-              id={`tx-${key}`}
-              name="bankTransactionId"
-              label="Bank payment"
-              options={[
-                { value: "", label: "None" },
-                ...mine.map((p) => ({
-                  value: p.bankTransactionId,
-                  label: `${formatDay(p.date)}, ${formatPence(p.amount)}`,
-                })),
-              ]}
-            />
-          </ActionForm>
-          {bill.id && (
-            <ActionForm action={deleteBill} submit="Delete" variant="ghost">
-              <input type="hidden" name="id" value={bill.id} />
-            </ActionForm>
-          )}
-        </div>
-      ) : (
-        bill.id && (
-          <ActionForm action={unmatchBill} submit="Unmatch" variant="outline">
-            <input type="hidden" name="id" value={bill.id} />
-          </ActionForm>
-        )
-      )}
-    </div>
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>Money in, by project</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <MonthlyBars
+            stacked
+            series={charts.moneyIn.series}
+            data={charts.moneyIn.months.map((m) => ({
+              ...m,
+              label: formatMonth(m.month),
+            }))}
+          />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Every invoice still to land</CardTitle>
+          <CardDescription>
+            Each month&apos;s total matches the breakdown. Use the eye to leave
+            an invoice out and see take-home change; its contractor cost stays,
+            because the work is still done. Click a line to change its days,
+            amount or landing date. 0 days means no work.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col gap-4">
+            <details>
+              <summary className="cursor-pointer text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+                Add a one-off invoice
+              </summary>
+              <p className="mt-2 text-sm text-muted-foreground">
+                For work only you know about yet. It counts like any invoice,
+                with a set-aside. Delete it when the real invoice is in Xero, or
+                it&apos;ll be counted twice.
+              </p>
+              <ActionForm
+                action={saveCustomInvoice}
+                submit="Add to forecast"
+                resetOnSuccess
+                className="mt-3 flex-row flex-wrap items-end"
+              >
+                <CustomInvoiceFields />
+              </ActionForm>
+            </details>
+            <MoneyInTable groups={moneyInTable(data.result)} />
+          </div>
+        </CardContent>
+      </Card>
+    </>
   )
 }
 
-function MoneyTab({ data }: { data: ForecastPageData }) {
+function BillsTab({ data }: { data: Ready }) {
   const { result } = data
-  const bills = result && !result.blocked ? result.bills : []
-  const months = result && !result.blocked ? result.months : []
+  const chart = billsChart(result)
   const contractors = data.people.filter((p) => p.kind === "contractor")
   return (
-    <div className="flex flex-col gap-6">
+    <>
       <Card>
         <CardHeader>
-          <CardTitle>Bank balance</CardTitle>
+          <CardTitle>Contractor money by month</CardTitle>
           <CardDescription>
-            Enter today&apos;s real balance if Xero is behind.
-            {data.xeroClosing !== null &&
-              ` Xero says ${formatPence(data.xeroClosing)}.`}
+            Bills paid, or expected to be paid, in each month
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-end gap-3">
-          {data.operatingAccountId ? (
-            <>
+        <CardContent>
+          <MonthlyBars
+            stacked
+            series={chart.series}
+            data={chart.months.map((m) => ({
+              ...m,
+              label: formatMonth(m.month),
+            }))}
+          />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Contractor bills</CardTitle>
+          <CardDescription>
+            Click a line to plan or mark it paid. Doing that to a forecast bill
+            saves it at its current amount.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <BillsTable bills={result.bills} payments={data.unlinkedPayments} />
+          {contractors.length > 0 && (
+            <details>
+              <summary className="cursor-pointer text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+                Enter a bill
+              </summary>
+              <p className="mt-2 text-sm text-muted-foreground">
+                This replaces the forecast bill for the same person and date.
+              </p>
+              <ActionForm
+                action={saveBill}
+                submit="Enter bill"
+                resetOnSuccess
+                className="mt-3"
+              >
+                <div className="grid gap-3 sm:grid-cols-5">
+                  <SelectField
+                    name="personId"
+                    label="Person"
+                    options={contractors.map((p) => ({
+                      value: p.id,
+                      label: p.name,
+                    }))}
+                  />
+                  <Field
+                    name="issuedOn"
+                    label="Issued on"
+                    type="date"
+                    required
+                  />
+                  <Field
+                    name="periodStart"
+                    label="Period start"
+                    type="date"
+                    required
+                  />
+                  <Field
+                    name="periodEnd"
+                    label="Period end"
+                    type="date"
+                    required
+                  />
+                  <Field
+                    name="amountGbp"
+                    label="Amount (£)"
+                    inputMode="decimal"
+                    required
+                  />
+                </div>
+              </ActionForm>
+            </details>
+          )}
+        </CardContent>
+      </Card>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Hold-backs</CardTitle>
+            <CardDescription>
+              Kept from a payout so next month&apos;s bills can be paid on time.
+              Click a month to change it.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <HoldBacksTable months={result.months} />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Bank balance</CardTitle>
+            <CardDescription>
+              {data.xeroClosing !== null
+                ? `Xero says ${formatPence(data.xeroClosing)}. `
+                : ""}
+              Enter today&apos;s real balance if Xero is behind.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-end gap-3">
+            {data.operatingAccountId && (
               <ActionForm
                 action={saveManualBalance}
                 submit="Save balance"
@@ -616,233 +558,186 @@ function MoneyTab({ data }: { data: ForecastPageData }) {
                   required
                 />
               </ActionForm>
-              {data.manualBalance !== null && (
-                <ActionForm
-                  action={clearManualBalance}
-                  submit="Clear"
-                  variant="ghost"
-                />
-              )}
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Tag an operating account first.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Contractor bills</CardTitle>
-          <CardDescription>
-            Entering a bill replaces the forecast one for the same person and
-            bill date. Setting a plan or marking a forecast bill paid saves it
-            at its current amount.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-6">
-          {contractors.length > 0 && (
-            <ActionForm action={saveBill} submit="Enter bill" resetOnSuccess>
-              <div className="grid gap-3 sm:grid-cols-5">
-                <SelectField
-                  name="personId"
-                  label="Person"
-                  options={contractors.map((p) => ({
-                    value: p.id,
-                    label: p.name,
-                  }))}
-                />
-                <Field name="issuedOn" label="Issued on" type="date" required />
-                <Field
-                  name="periodStart"
-                  label="Period start"
-                  type="date"
-                  required
-                />
-                <Field
-                  name="periodEnd"
-                  label="Period end"
-                  type="date"
-                  required
-                />
-                <Field
-                  name="amountGbp"
-                  label="Amount (£)"
-                  inputMode="decimal"
-                  required
-                />
-              </div>
-            </ActionForm>
-          )}
-          <div className="flex flex-col gap-4">
-            {bills.map((b) => (
-              <BillRow
-                key={`${b.personId}-${b.issuedOn}`}
-                bill={b}
-                payments={data.unlinkedPayments}
-              />
-            ))}
-            {bills.length === 0 && (
-              <p className="text-sm text-muted-foreground">No bills yet.</p>
             )}
-          </div>
-        </CardContent>
-      </Card>
-
+            {data.manualBalance !== null && (
+              <ActionForm
+                action={clearManualBalance}
+                submit="Clear"
+                variant="ghost"
+              />
+            )}
+          </CardContent>
+        </Card>
+      </div>
       <Card>
         <CardHeader>
           <CardTitle>Adjustments</CardTitle>
           <CardDescription>
-            One-off items outside the contractor model. Use a negative amount
-            for money out. Adjustments never change set-asides.
+            One-off items outside the contractor model. They never change
+            set-asides.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          {data.adjustments.map((a) => (
-            <div
-              key={a.id}
-              className="flex flex-wrap items-end gap-3 border-b border-border/60 pb-4"
-            >
-              <ActionForm
-                action={saveAdjustment}
-                submit="Save"
-                variant="outline"
-                className="flex-row flex-wrap items-end"
-              >
-                <input type="hidden" name="id" value={a.id} />
-                <Field
-                  id={`date-${a.id}`}
-                  name="date"
-                  label="Date"
-                  type="date"
-                  className="w-40"
-                  defaultValue={a.date}
-                />
-                <Field
-                  id={`label-${a.id}`}
-                  name="label"
-                  label="Label"
-                  className="w-48"
-                  defaultValue={a.label}
-                />
-                <Field
-                  id={`amount-${a.id}`}
-                  name="amountGbp"
-                  label="Amount (£)"
-                  inputMode="decimal"
-                  className="w-28"
-                  defaultValue={a.amountGbp}
-                />
-                <Field
-                  id={`adjustment-note-${a.id}`}
-                  name="note"
-                  label="Note"
-                  className="w-48"
-                  defaultValue={a.note ?? ""}
-                />
-              </ActionForm>
-              <ActionForm
-                action={deleteAdjustment}
-                submit="Delete"
-                variant="ghost"
-              >
-                <input type="hidden" name="id" value={a.id} />
-              </ActionForm>
-            </div>
-          ))}
-          <ActionForm
-            action={saveAdjustment}
-            submit="Add adjustment"
-            resetOnSuccess
-            className="flex-row flex-wrap items-end"
-          >
-            <Field
-              id="new-adjustment-date"
-              name="date"
-              label="Date"
-              type="date"
-              className="w-40"
-              required
-            />
-            <Field
-              id="new-adjustment-label"
-              name="label"
-              label="Label"
-              className="w-48"
-              required
-            />
-            <Field
-              id="new-adjustment-amount"
-              name="amountGbp"
-              label="Amount (£)"
-              inputMode="decimal"
-              className="w-28"
-              required
-            />
-            <Field
-              id="new-adjustment-note"
-              name="note"
-              label="Note"
-              className="w-48"
-            />
-          </ActionForm>
+        <CardContent>
+          <AdjustmentsTable rows={data.adjustments} />
         </CardContent>
       </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Hold-backs</CardTitle>
-          <CardDescription>
-            Each month&apos;s suggestion keeps back enough to pay next
-            month&apos;s contractor bills by their due dates. Enter 0 to hold
-            nothing back.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          {months.map((m) => (
-            <div key={m.month} className="flex flex-wrap items-end gap-3">
-              <ActionForm
-                action={saveHoldBack}
-                submit="Set"
-                variant="outline"
-                className="flex-row flex-wrap items-end"
-              >
-                <input type="hidden" name="month" value={m.month} />
-                <Field
-                  id={`hold-${m.month}`}
-                  name="amountGbp"
-                  label={`${formatMonth(m.month)}: suggested ${formatPence(m.suggestedHoldBack)}`}
-                  inputMode="decimal"
-                  className="w-64"
-                  defaultValue={
-                    m.holdBackSource === "director" ? m.holdBack : ""
-                  }
-                  required
-                />
-                <Field
-                  id={`hold-note-${m.month}`}
-                  name="note"
-                  label="Note"
-                  className="w-48"
-                />
-              </ActionForm>
-              {m.holdBackSource === "director" && (
-                <ActionForm
-                  action={clearHoldBack}
-                  submit="Use the suggestion"
-                  variant="ghost"
-                >
-                  <input type="hidden" name="month" value={m.month} />
-                </ActionForm>
-              )}
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    </div>
+    </>
   )
 }
+
+function TimelineTab({ data }: { data: Ready }) {
+  const { result } = data
+  const charts = forecastCharts(result)
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>Cash in the main account</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <BalanceLine
+            today={charts.today}
+            data={charts.balance.map((d) => ({
+              ...d,
+              label: formatDayShort(d.date),
+            }))}
+          />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Every cash event</CardTitle>
+          <CardDescription>
+            This month is open. Open another to see its events; the line shows
+            its totals and lowest balance. Hidden events still count in the
+            balance.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Timeline months={timelineMonths(result)} today={result.today} />
+        </CardContent>
+      </Card>
+    </>
+  )
+}
+
+function AccuracyTab({ data }: { data: Ready }) {
+  const summary = accuracySummary(data.accuracy)
+  if (summary.compared === 0)
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>No comparisons yet</CardTitle>
+          <CardDescription>
+            Each daily sync records the forecast. An invoice shows here once one
+            was recorded at least 7 days before its date, so this starts to fill
+            in about a week after the first sync, as invoices are raised.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    )
+  const recent = summary.rows.slice(0, 12).reverse()
+  const money = (v: string | null) => (v === null ? "None" : formatPence(v))
+  return (
+    <>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatTile
+          label="Average miss, 7 days before"
+          value={formatPercent(summary.averageMiss7)}
+          sub={
+            summary.lean7 === "over"
+              ? "Tends to forecast too high"
+              : summary.lean7 === "under"
+                ? "Tends to forecast too low"
+                : "No lean either way"
+          }
+          accent
+        />
+        <StatTile
+          label="Average miss, 14 days before"
+          value={formatPercent(summary.averageMiss14)}
+        />
+        <StatTile label="Invoices compared" value={String(summary.compared)} />
+      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Forecast against actual</CardTitle>
+          <CardDescription>The latest invoices, oldest first</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <MonthlyBars
+            series={[
+              { key: "actual", label: "Actual" },
+              { key: "f7", label: "7 days before" },
+              { key: "f14", label: "14 days before" },
+            ]}
+            data={recent.map((r) => ({
+              label: r.invoiceNumber ?? formatDayShort(r.invoiceDate),
+              actual: Number(r.actual),
+              f7: Number(r.forecast7 ?? 0),
+              f14: Number(r.forecast14 ?? 0),
+            }))}
+          />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>By invoice</CardTitle>
+          <CardDescription>
+            A positive difference means the invoice came in above the forecast.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Invoice</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead className="text-right">Actual</TableHead>
+                <TableHead className="text-right">7 days before</TableHead>
+                <TableHead className="text-right">Difference</TableHead>
+                <TableHead className="text-right">14 days before</TableHead>
+                <TableHead className="text-right">Difference</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {summary.rows.map((r) => (
+                <TableRow key={r.invoiceId}>
+                  <TableCell>{r.invoiceNumber}</TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {formatDay(r.invoiceDate)}
+                  </TableCell>
+                  <TableCell className="text-right font-medium tabular-nums">
+                    {formatPence(r.actual)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {money(r.forecast7)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {money(r.difference7)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {money(r.forecast14)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {money(r.difference14)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </>
+  )
+}
+
+type Ready = ForecastPageData & {
+  result: Extract<NonNullable<ForecastPageData["result"]>, { blocked: false }>
+}
+
+const isReady = (d: ForecastPageData): d is Ready =>
+  d.result !== null && !d.result.blocked
 
 export default async function ForecastPage({
   searchParams,
@@ -850,7 +745,11 @@ export default async function ForecastPage({
   searchParams: Promise<{ tab?: string }>
 }) {
   await requireDirector()
-  const tab = (await searchParams).tab === "money" ? "money" : "overview"
+  const requested = (await searchParams).tab
+  const tab: TabKey =
+    requested === "money"
+      ? "bills"
+      : (TABS.find((t) => t.key === requested)?.key ?? "overview")
   const data = await getForecastPage()
   const { result, setup } = data
 
@@ -860,7 +759,7 @@ export default async function ForecastPage({
       lede="Take-home per director, from Solidtime hours and Xero's bank data."
       actions={
         <div className="flex flex-wrap items-center gap-3">
-          {result && !result.blocked && (
+          {isReady(data) && (
             <a
               href="/api/export/forecast-pack"
               className={buttonVariants({ variant: "outline", size: "sm" })}
@@ -894,7 +793,7 @@ export default async function ForecastPage({
     )
   }
 
-  if (!result) {
+  if (!isReady(data)) {
     return (
       <div className="flex flex-col gap-8">
         {header}
@@ -903,157 +802,15 @@ export default async function ForecastPage({
     )
   }
 
-  const charts = forecastCharts(result)
-  const windowStart = result.months[0]?.month ?? result.today
-  const windowEnd = result.timeline.at(-1)?.date ?? result.today
-  // The engine looks one month further for hold-backs; that month isn't shown.
-  const upcoming = result.invoices.filter(
-    (i) =>
-      i.linked && i.invoiceDate >= windowStart && i.invoiceDate <= windowEnd
-  )
-
   return (
     <div className="flex flex-col gap-8">
       {header}
       <Warnings warnings={data.warnings} />
-      {tab === "money" ? (
-        <MoneyTab data={data} />
-      ) : (
-        <>
-          <div className="grid gap-4 md:grid-cols-3">
-            {result.months.map((m) => (
-              <MonthTile
-                key={m.month}
-                month={m}
-                reserve={result.taxReserveBalance}
-              />
-            ))}
-          </div>
-          <Card>
-            <CardHeader>
-              <CardTitle>Cash in the main account</CardTitle>
-              <CardDescription>
-                End-of-day balance: solid up to today, dashed for the forecast.
-                It should fall to about the buffer at each month-end payout;
-                below zero means a shortfall.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <BalanceLine
-                today={charts.today}
-                data={charts.balance.map((d) => ({
-                  ...d,
-                  label: formatDayShort(d.date),
-                }))}
-              />
-            </CardContent>
-          </Card>
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Money in, by project</CardTitle>
-                <CardDescription>
-                  Client payments and invoices expected to land each month
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <MonthlyBars
-                  stacked
-                  series={charts.moneyIn.series}
-                  data={charts.moneyIn.months.map((m) => ({
-                    ...m,
-                    label: formatMonth(m.month),
-                  }))}
-                />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>Where the money goes</CardTitle>
-                <CardDescription>
-                  Everything leaving the main account each month
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <MonthlyBars
-                  stacked
-                  series={charts.moneyOut.series}
-                  data={charts.moneyOut.months.map((m) => ({
-                    ...m,
-                    label: formatMonth(m.month),
-                  }))}
-                />
-              </CardContent>
-            </Card>
-          </div>
-          <Card>
-            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
-              <div>
-                <CardTitle>Breakdown by month</CardTitle>
-                <CardDescription>
-                  Running costs are forecast at{" "}
-                  {formatPence(result.runningCostAverage)} a month, the average
-                  of the last three complete months.
-                </CardDescription>
-              </div>
-              <CopyButton text={breakdownText(result.months)} />
-            </CardHeader>
-            <CardContent>
-              <Breakdown months={result.months} />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Expected money in</CardTitle>
-              <CardDescription>
-                Every invoice not yet paid. Leave one out or move its date to
-                see take-home change. The work is still done, so its contractor
-                cost stays; to change the work itself, use an override below.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ExpectedMoneyIn rows={result.expectedMoney} />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Upcoming invoices</CardTitle>
-              <CardDescription>
-                Try a &quot;what if&quot;: an override changes the invoice and
-                its contractor cost, and the forecast updates straight away. An
-                override of 0 means no work.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <UpcomingInvoices invoices={upcoming} />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Timeline</CardTitle>
-              <CardDescription>
-                {formatDay(windowStart)} to {formatDay(windowEnd)}. Events that
-                have happened are shown brighter than forecast ones.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Timeline events={result.timeline} />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Accuracy</CardTitle>
-              <CardDescription>
-                Each raised invoice against what was forecast 14 and 7 days
-                before its date.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Accuracy rows={data.accuracy} />
-            </CardContent>
-          </Card>
-        </>
-      )}
+      {tab === "overview" && <OverviewTab data={data} />}
+      {tab === "money-in" && <MoneyInTab data={data} />}
+      {tab === "bills" && <BillsTab data={data} />}
+      {tab === "timeline" && <TimelineTab data={data} />}
+      {tab === "accuracy" && <AccuracyTab data={data} />}
     </div>
   )
 }

@@ -9,6 +9,7 @@ import {
   bankHoliday,
   cashAdjustment,
   contractorBill,
+  customInvoice,
   forecastOverride,
   forecastSnapshot,
   holdBack,
@@ -290,6 +291,7 @@ export async function loadForecastInput(
     adjustments,
     holdBacks,
     expectations,
+    customInvoices,
     holidays,
     balances,
     cursor,
@@ -316,6 +318,7 @@ export async function loadForecastInput(
     db.select().from(cashAdjustment),
     db.select().from(holdBack),
     db.select().from(invoiceExpectation),
+    db.select().from(customInvoice),
     db.select({ date: bankHoliday.date }).from(bankHoliday),
     db.select().from(bankBalance).orderBy(desc(bankBalance.asOf)),
     db
@@ -441,6 +444,14 @@ export async function loadForecastInput(
           }
         : null,
     manualBalance: manual?.closingGbp ?? null,
+    customInvoices: customInvoices.map((c) => ({
+      id: c.id,
+      label: c.label,
+      amountGbp: c.amountGbp,
+      contractorCostGbp: c.contractorCostGbp,
+      landsOn: c.landsOn,
+      note: c.note,
+    })),
     expectations: expectations.map((e) => ({
       invoiceKey: e.invoiceKey,
       excluded: e.excluded,

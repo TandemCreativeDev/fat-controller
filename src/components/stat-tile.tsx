@@ -15,7 +15,7 @@ export function StatTile({
 }) {
   return (
     <Card size="sm" className="px-5 py-4">
-      <span className="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
+      <span className="text-xs font-semibold tracking-[0.08em] text-muted-foreground uppercase">
         {label}
       </span>
       <span
@@ -26,7 +26,7 @@ export function StatTile({
       >
         {value}
       </span>
-      {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
+      {sub && <span className="text-sm text-muted-foreground">{sub}</span>}
     </Card>
   )
 }

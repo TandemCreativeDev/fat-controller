@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest"
 
 import {
   accuracyRows,
+  accuracySummary,
+  billsChart,
   bankTransactionCashLines,
   breakdownText,
   classifyCashLine,
@@ -12,8 +14,10 @@ import {
   lastWorkingDay,
   londonDate,
   matchContractorPayments,
+  moneyInTable,
   paymentCashLine,
   runForecast,
+  timelineMonths,
   type CashLine,
   type ForecastInput,
   type ForecastResult,
@@ -175,6 +179,7 @@ function baseInput(overrides: Partial<ForecastInput> = {}): ForecastInput {
     manualBalance: null,
     taxReserveBalance: "5000.00",
     expectations: [],
+    customInvoices: [],
     ...overrides,
   }
 }
@@ -1432,6 +1437,267 @@ describe("expected money in", () => {
     const r = run(baseInput())
     const late = r.expectedMoney.find((m) => m.invoiceDate === "2026-06-26")!
     expect(late.landsOn).toBe("2026-07-03")
+  })
+})
+
+describe("the money in table", () => {
+  const payment: CashLine = {
+    ...raw({
+      sourceId: "pay",
+      source: "payment",
+      direction: "in",
+      date: "2026-06-03",
+      amount: "700.00",
+      salesInvoiceId: "paid",
+    }),
+    kind: "client_payment",
+    personId: null,
+  }
+  const paidInvoice = {
+    invoiceId: "paid",
+    invoiceNumber: "AAA-I0",
+    invoiceDate: "2026-05-15",
+    dueDate: "2026-05-22",
+    subTotal: "700.00",
+    totalTax: "0.00",
+    total: "700.00",
+    outstanding: "0.00",
+  }
+
+  it("matches the breakdown's invoices landing, including money already received", () => {
+    const base = baseInput({
+      today: "2026-06-05",
+      settings: { ...baseInput().settings, months: 2 },
+      cash: [...baseInput().cash, payment],
+      invoices: [...baseInput().invoices, paidInvoice],
+      balance: { opening: "1000.00", closing: "1700.00" },
+    })
+    const r = run(base)
+    const groups = moneyInTable(r)
+    const june = groups.find((g) => g.month === "2026-06-01")!
+    const july = groups.find((g) => g.month === "2026-07-01")!
+    expect(june.received).toBe("700.00")
+    expect(june.totalAmount).toBe(r.months[0].invoicesLanding)
+    expect(july.totalAmount).toBe(r.months[1].invoicesLanding)
+    expect(june.rows.some((x) => x.invoiceNumber === "AAA-I0")).toBe(false)
+  })
+
+  it("groups by when the money lands, sorted, with overdue invoices first", () => {
+    const groups = moneyInTable(run(baseInput()))
+    const june = groups.find((g) => g.month === "2026-06-01")!
+    expect(june.rows.map((x) => [x.status, x.landsOn])).toEqual([
+      ["overdue", "2026-06-01"],
+      ["forecast", "2026-06-19"],
+      ["forecast", "2026-06-20"],
+    ])
+    expect(june.received).toBe("0.00")
+    // Beyond June: the 26 June invoice lands in July.
+    const later = groups.find((g) => g.kind === "later")!
+    expect(later.rows[0].landsOn).toBe("2026-07-03")
+    expect(later.received).toBeNull()
+  })
+
+  it("keeps a left-out invoice in its month's rows, out of the month's total", () => {
+    const r = run(
+      baseInput({
+        expectations: [
+          { invoiceKey: "inv1", excluded: true, expectedOn: null },
+        ],
+      })
+    )
+    const groups = moneyInTable(r)
+    const june = groups.find((g) => g.month === "2026-06-01")!
+    const row = june.rows.find((x) => x.key === "inv1")!
+    expect(row.included).toBe(false)
+    expect(row.amount).toBe("15000.00")
+    expect(row.landsOn).toBe("2026-06-01")
+    expect(june.totalAmount).toBe(r.months[0].invoicesLanding)
+    expect(june.totalAmount).toBe("6500.00")
+    expect(groups.map((g) => g.kind)).not.toContain("left_out")
+  })
+
+  it("keeps a £0 override listed, so it can be changed back", () => {
+    const r = run(
+      baseInput({
+        overrides: [
+          ...baseInput().overrides,
+          {
+            projectId: "pa",
+            periodEnd: "2026-06-12",
+            days: "0",
+            amountGbp: null,
+          },
+        ],
+      })
+    )
+    const row = moneyInTable(r)
+      .flatMap((g) => g.rows)
+      .find((x) => x.invoiceDate === "2026-06-12")!
+    expect(row).toMatchObject({
+      amount: "0.00",
+      hasOverride: true,
+      overrideDays: "0",
+      canOverride: true,
+    })
+  })
+
+  it("only lets forecast invoices have their days changed", () => {
+    const rows = moneyInTable(run(baseInput())).flatMap((g) => g.rows)
+    expect(rows.find((x) => x.key === "inv1")!.canOverride).toBe(false)
+    expect(rows.find((x) => x.status === "forecast")!.canOverride).toBe(true)
+  })
+})
+
+describe("one-off invoices", () => {
+  const oneOff = {
+    id: "11111111-1111-4111-8111-111111111111",
+    label: "Workshop for a friend",
+    amountGbp: "1000.00",
+    contractorCostGbp: "200.00",
+    landsOn: "2026-06-16",
+    note: "Only we know about this",
+  }
+  const key = `custom:${oneOff.id}`
+  const withOneOff = (extra: Partial<ForecastInput> = {}) =>
+    run(baseInput({ customInvoices: [oneOff], ...extra }))
+
+  it("lands its money and sets aside 20% of its margin", () => {
+    const base = run(baseInput()).months[0]
+    const r = withOneOff()
+    expect(Number(r.months[0].invoicesLanding)).toBe(
+      Number(base.invoicesLanding) + 1000
+    )
+    expect(Number(r.months[0].setAsides)).toBe(Number(base.setAsides) - 160)
+    expect(
+      r.timeline.find(
+        (e) => e.label === "One-off invoice: Workshop for a friend"
+      )
+    ).toMatchObject({
+      date: "2026-06-16",
+      amount: "1000.00",
+      source: "manual",
+      actual: false,
+    })
+    // 800 more for the directors between them.
+    expect(Number(r.months[0].payout)).toBe(Number(base.payout) + 840)
+  })
+
+  it("appears in the money in table, adding up with the breakdown", () => {
+    const r = withOneOff()
+    const june = moneyInTable(r).find((g) => g.month === "2026-06-01")!
+    const row = june.rows.find((x) => x.key === key)!
+    expect(row.status).toBe("one-off")
+    expect(row.canOverride).toBe(false)
+    expect(row.custom).toEqual({
+      id: oneOff.id,
+      amount: "1000.00",
+      cost: "200.00",
+      landsOn: "2026-06-16",
+    })
+    expect(june.totalAmount).toBe(r.months[0].invoicesLanding)
+  })
+
+  it("can be left out with the eye, staying in its row", () => {
+    const base = run(baseInput()).months[0]
+    const r = withOneOff({
+      expectations: [{ invoiceKey: key, excluded: true, expectedOn: null }],
+    })
+    expect(r.months[0].invoicesLanding).toBe(base.invoicesLanding)
+    const june = moneyInTable(r).find((g) => g.month === "2026-06-01")!
+    expect(june.rows.find((x) => x.key === key)!.included).toBe(false)
+  })
+
+  it("stays listed when it lands after the months shown", () => {
+    const r = withOneOff({
+      customInvoices: [{ ...oneOff, landsOn: "2027-03-01" }],
+    })
+    const later = moneyInTable(r).find((g) => g.kind === "later")!
+    expect(later.rows.some((x) => x.key === key)).toBe(true)
+  })
+
+  it("lands today if its date has passed", () => {
+    const r = withOneOff({
+      customInvoices: [{ ...oneOff, landsOn: "2026-05-01" }],
+    })
+    expect(r.expectedMoney.find((m) => m.key === key)!.landsOn).toBe(
+      "2026-06-01"
+    )
+  })
+
+  it("adds VAT once registered, with the set-aside before VAT", () => {
+    const r = withOneOff({
+      settings: { ...baseInput().settings, vatRegisteredFrom: "2026-01-01" },
+    })
+    expect(r.expectedMoney.find((m) => m.key === key)!.amount).toBe("1200.00")
+    expect(r.invoices.find((i) => i.key === key)!.setAside).toBe("160.00")
+  })
+})
+
+describe("the timeline view", () => {
+  it("splits money in and out, and finds the month's lowest balance", () => {
+    const [june] = timelineMonths(run(baseInput()))
+    expect(june.closing).toBe("100.00")
+    const first = june.rows[0]
+    expect(first.category).toBe("money_in")
+    expect(first.moneyIn).toBe("15000.00")
+    expect(first.moneyOut).toBeNull()
+    expect(june.rows.find((r) => r.category === "contractors")!.moneyOut).toBe(
+      "9000.00"
+    )
+    // 1,000 + 21,500 in; everything else out, down to the buffer.
+    expect(june.totalIn).toBe("21500.00")
+    expect(june.totalOut).toBe("22400.00")
+    expect(june.lowest).toBe("100.00")
+    expect(june.lowestOn).toBe("2026-06-30")
+  })
+})
+
+describe("the accuracy view", () => {
+  const row = (
+    n: string,
+    actual: string,
+    f14: string | null,
+    f7: string | null
+  ) => ({
+    invoiceId: n,
+    invoiceNumber: n,
+    projectName: "P",
+    invoiceDate: "2026-06-01",
+    actual,
+    forecast14: f14,
+    forecast7: f7,
+    difference14: null,
+    difference7: null,
+  })
+
+  it("averages the miss over invoices that have a forecast, and drops the rest", () => {
+    const s = accuracySummary([
+      row("a", "1000.00", "900.00", "1100.00"),
+      row("b", "1000.00", null, "1300.00"),
+      row("c", "1000.00", null, null),
+    ])
+    expect(s.compared).toBe(2)
+    expect(s.rows.map((r) => r.invoiceNumber)).toEqual(["a", "b"])
+    expect(s.averageMiss14).toBe(0.1)
+    expect(s.averageMiss7).toBe(0.2)
+    expect(s.lean7).toBe("over")
+  })
+
+  it("says nothing with nothing to compare", () => {
+    expect(accuracySummary([row("c", "1.00", null, null)])).toMatchObject({
+      compared: 0,
+      averageMiss14: null,
+      averageMiss7: null,
+      lean7: null,
+    })
+  })
+})
+
+describe("the bills chart", () => {
+  it("puts a bill in the month it's expected to be paid", () => {
+    const c = billsChart(run(baseInput()))
+    expect(c.series).toEqual([{ key: "c0", label: "Casey Contractor" }])
+    expect(c.months[0].c0).toBe(9000)
   })
 })
 

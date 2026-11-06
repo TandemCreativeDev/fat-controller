@@ -11,6 +11,7 @@ import {
   cashAdjustment,
   contractorBill,
   contractorPaymentExclusion,
+  customInvoice,
   forecastOverride,
   holdBack,
   invoiceExpectation,
@@ -100,10 +101,11 @@ export async function clearOverride(
 
 // ------------------------------------------------------------------ expected money in
 
-// The Xero invoice ID, or `<project id>|<date>` for a forecast invoice.
+// The Xero invoice ID, `<project id>|<date>` for a forecast invoice, or
+// `custom:<id>` for a one-off.
 const invoiceKey = z
   .string()
-  .regex(/^[0-9a-f-]{36}(\|\d{4}-\d{2}-\d{2})?$/, "Unknown invoice")
+  .regex(/^(custom:)?[0-9a-f-]{36}(\|\d{4}-\d{2}-\d{2})?$/, "Unknown invoice")
 
 const expectationForm = z.object({
   invoiceKey,
@@ -143,6 +145,48 @@ export async function saveExpectation(
   }
   refresh()
   return saved
+}
+
+// ------------------------------------------------------------------ one-off invoices
+
+const customForm = z.object({
+  id: optionalUuid,
+  label: z.string().trim().min(1, "Say what this invoice is for"),
+  amountGbp: moneyField.refine((v) => Number(v) > 0, "Enter an amount above 0"),
+  contractorCostGbp: z.preprocess((v) => (v === "" ? "0" : v), moneyField),
+  landsOn: z.iso.date("Choose when the money lands"),
+  note: optionalText,
+})
+
+export async function saveCustomInvoice(
+  _prev: FormState,
+  data: FormData
+): Promise<FormState> {
+  const director = await requireDirector()
+  const parsed = customForm.safeParse(form(data))
+  if (!parsed.success) return { ok: false, message: firstError(parsed.error) }
+  const { id, ...row } = parsed.data
+  if (id)
+    await db.update(customInvoice).set(row).where(eq(customInvoice.id, id))
+  else await db.insert(customInvoice).values({ ...row, createdBy: director.id })
+  refresh()
+  return saved
+}
+
+export async function deleteCustomInvoice(
+  _prev: FormState,
+  data: FormData
+): Promise<FormState> {
+  await requireDirector()
+  const id = z.uuid().parse(data.get("id"))
+  await db.transaction(async (tx) => {
+    await tx.delete(customInvoice).where(eq(customInvoice.id, id))
+    await tx
+      .delete(invoiceExpectation)
+      .where(eq(invoiceExpectation.invoiceKey, `custom:${id}`))
+  })
+  refresh()
+  return { ok: true, message: "Deleted." }
 }
 
 // ------------------------------------------------------------------ bills

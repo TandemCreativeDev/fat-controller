@@ -24,6 +24,7 @@ import {
   optionalText,
   optionalUuid,
 } from "@/lib/form"
+import { applyContractorMatching } from "@/lib/forecast-sync"
 import { saveSetting } from "@/lib/settings-store"
 import { requireDirector } from "@/lib/session"
 
@@ -63,6 +64,9 @@ export async function saveForecastSettings(
   await saveSetting("vat_registered_from", v.vatRegisteredFrom, director.id)
   await saveSetting("vat_rate", v.vatRate / 100, director.id)
   await saveSetting("vat_liability_account_id", v.vatAccount, director.id)
+  // A new start date brings older bills into view. Link their payments now, or
+  // they'd all look unpaid and due today until the next sync.
+  await applyContractorMatching()
   refresh()
   return { ok: true, message: "Saved." }
 }
