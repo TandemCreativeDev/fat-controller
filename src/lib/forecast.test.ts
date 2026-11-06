@@ -1631,6 +1631,45 @@ describe("project end dates", () => {
     expect(last.amount).toBe("1500.00")
   })
 
+  it("drops the last invoice when no work is left to bill", () => {
+    // Ends on Saturday 13 June: nothing tracked, and no working days after the 12th.
+    const r = ending("2026-06-13")
+    expect(forecast(r).map((i) => i.invoiceDate)).toEqual(["2026-06-12"])
+  })
+
+  it("keeps that invoice if time turns up, or a director overrides it", () => {
+    const tracked = run(
+      baseInput({
+        today: "2026-06-16",
+        projects: [{ ...PROJECT_A, endDate: "2026-06-13" }],
+        overrides: [],
+        entries: [
+          ...baseInput().entries,
+          entry("u-c1", "st-a", "2026-06-15", 7.5),
+        ],
+      })
+    )
+    expect(tracked.invoices.some((i) => i.invoiceDate === "2026-06-26")).toBe(
+      true
+    )
+    const overridden = run(
+      baseInput({
+        projects: [{ ...PROJECT_A, endDate: "2026-06-13" }],
+        overrides: [
+          {
+            projectId: "pa",
+            periodEnd: "2026-06-26",
+            days: "1",
+            amountGbp: null,
+          },
+        ],
+      })
+    )
+    expect(
+      overridden.invoices.find((i) => i.invoiceDate === "2026-06-26")!.amount
+    ).toBe("500.00")
+  })
+
   it("stops contractor bills too", () => {
     const r = ending("2026-06-17")
     const after = r.bills.filter((b) => b.issuedOn > "2026-06-26")

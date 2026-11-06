@@ -950,6 +950,15 @@ function buildInvoices(
         factor = unscaled.isZero() ? ZERO : total.div(unscaled)
       }
 
+      // Nothing left to bill after the project ended, so there's no last invoice.
+      if (
+        project.endDate &&
+        date > project.endDate &&
+        unscaled.isZero() &&
+        !override
+      )
+        continue
+
       if (status === "missed") {
         out.push(
           missed(project, date, start, tracked, forecast, override ?? null)
