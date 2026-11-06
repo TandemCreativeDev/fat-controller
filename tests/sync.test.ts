@@ -7,6 +7,7 @@ import { db, pool } from "@/db"
 import {
   accountGroup,
   syncCursor,
+  syncLock,
   syncRun,
   xeroConnection,
   xeroInvoice,
@@ -112,7 +113,7 @@ function mockXero() {
 
 beforeEach(async () => {
   await db.execute(
-    sql`truncate xero_connection, sync_cursor, sync_run, xero_invoice, xero_invoice_line, xero_organisation, xero_account, account_group, xero_pnl_line, xero_report_snapshot, settings restart identity cascade`
+    sql`truncate sync_lock, xero_connection, sync_cursor, sync_run, xero_invoice, xero_invoice_line, xero_organisation, xero_account, account_group, xero_pnl_line, xero_report_snapshot, settings restart identity cascade`
   )
   const key = parseKey(env.TOKEN_ENCRYPTION_KEY!)
   await db.insert(xeroConnection).values({
@@ -133,6 +134,26 @@ afterAll(async () => {
 })
 
 describe("runSync", () => {
+  it("refuses while another sync holds the lock, and lets go when it finishes", async () => {
+    await db.insert(syncLock).values({
+      token: randomUUID(),
+      lockedUntil: new Date(Date.now() + 60_000),
+    })
+    expect((await runSync("manual", 60_000)).status).toBe("busy")
+
+    await db.delete(syncLock)
+    expect((await runSync("manual", 60_000)).status).toBe("done")
+    expect((await runSync("manual", 60_000)).status).toBe("done")
+  })
+
+  it("takes over a lock left behind by a sync that died", async () => {
+    await db.insert(syncLock).values({
+      token: randomUUID(),
+      lockedUntil: new Date(Date.now() - 1_000),
+    })
+    expect((await runSync("manual", 60_000)).status).toBe("done")
+  })
+
   it("backfills every page, stores lines, and advances the cursor", async () => {
     invoicePages = {
       1: Array.from({ length: 100 }, (_, i) =>

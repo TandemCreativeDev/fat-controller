@@ -57,6 +57,18 @@ export const syncRun = pgTable(
 )
 
 /**
+ * Who is syncing, until when. A lease rather than a Postgres advisory lock: those
+ * belong to one connection, and the pooler in production can run the unlock on a
+ * different one, leaving the lock held for good. A lease also frees itself if a
+ * sync is killed part-way.
+ */
+export const syncLock = pgTable("sync_lock", {
+  id: text("id").primaryKey().default("sync"),
+  token: uuid("token").notNull(),
+  lockedUntil: tstz("locked_until").notNull(),
+})
+
+/**
  * Per-resource sync position. A pass pages through everything modified since
  * `modifiedSince` (null = full backfill); `nextPage` is null between passes.
  * `highWater` collects the newest UpdatedDateUTC seen during the pass and

@@ -1,5 +1,7 @@
 import "server-only"
 
+import { randomUUID } from "node:crypto"
+
 import {
   desc,
   eq,
@@ -12,11 +14,12 @@ import {
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core"
 import type { z } from "zod"
 
-import { db, pool } from "@/db"
+import { db } from "@/db"
 import {
   accountGroup,
   settings,
   syncCursor,
+  syncLock,
   syncRun,
   xeroAccount,
   xeroBankTransaction,
@@ -37,7 +40,8 @@ import { runForecastSteps } from "@/lib/forecast-sync"
 import { XeroAuthError } from "./tokens"
 
 const PAGE_SIZE = 100
-const SYNC_LOCK_ID = 7_314_001
+/** Longer than a sync can run: its budget, plus the slowest steps once that's spent. */
+const LOCK_MARGIN_MS = 60_000
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
@@ -353,53 +357,55 @@ export type SyncResult =
 /**
  * Bring every resource up to date, resuming where the last call stopped.
  * Stops starting new pages once `budgetMs` has elapsed and reports "partial";
- * calling again continues. Only one sync runs at a time (Postgres advisory lock).
+ * calling again continues. Only one sync runs at a time (see syncLock).
  */
 export async function runSync(
   trigger: "cron" | "manual",
   budgetMs: number
 ): Promise<SyncResult> {
   const deadline = Date.now() + budgetMs
-  const lockClient = await pool.connect()
+  const token = randomUUID()
+  const lockedUntil = sql`now() + ${budgetMs + LOCK_MARGIN_MS} * interval '1 millisecond'`
+  const [held] = await db
+    .insert(syncLock)
+    .values({ id: "sync", token, lockedUntil })
+    .onConflictDoUpdate({
+      target: syncLock.id,
+      set: { token, lockedUntil },
+      setWhere: sql`${syncLock.lockedUntil} < now()`,
+    })
+    .returning({ id: syncLock.id })
+  if (!held) return { status: "busy" }
   try {
-    const { rows } = await lockClient.query<{ locked: boolean }>(
-      "select pg_try_advisory_lock($1) as locked",
-      [SYNC_LOCK_ID]
-    )
-    if (!rows[0]?.locked) return { status: "busy" }
-    try {
-      const steps: StepResult[] = []
-      for (const r of RESOURCES) {
-        if (Date.now() >= deadline) break
-        const step = await syncResource(r, trigger, deadline)
-        steps.push(step)
-        // Auth failures and the daily limit stop the whole run; other errors skip to the next resource.
-        if (
-          step.error &&
-          /token|not connected|daily API limit/i.test(step.error)
-        )
-          break
-      }
-      await ensureAccountGroups()
-      const xeroFailed = steps.some((s) => s.error)
-      const allComplete =
-        steps.length === RESOURCES.length && steps.every((s) => s.complete)
-      // Everything the forecast adds runs once Xero has nothing more to page through.
-      const extra =
-        allComplete || xeroFailed
-          ? await runForecastSteps(trigger, { xeroUpToDate: !xeroFailed })
-          : []
-      steps.push(...extra)
-      const failed = steps.some((s) => s.error && !s.soft)
-      return {
-        status: failed ? "failed" : allComplete ? "done" : "partial",
-        steps,
-      }
-    } finally {
-      await lockClient.query("select pg_advisory_unlock($1)", [SYNC_LOCK_ID])
+    const steps: StepResult[] = []
+    for (const r of RESOURCES) {
+      if (Date.now() >= deadline) break
+      const step = await syncResource(r, trigger, deadline)
+      steps.push(step)
+      // Auth failures and the daily limit stop the whole run; other errors skip to the next resource.
+      if (step.error && /token|not connected|daily API limit/i.test(step.error))
+        break
+    }
+    await ensureAccountGroups()
+    const xeroFailed = steps.some((s) => s.error)
+    const allComplete =
+      steps.length === RESOURCES.length && steps.every((s) => s.complete)
+    // Everything the forecast adds runs once Xero has nothing more to page through.
+    const extra =
+      allComplete || xeroFailed
+        ? await runForecastSteps(trigger, { xeroUpToDate: !xeroFailed })
+        : []
+    steps.push(...extra)
+    const failed = steps.some((s) => s.error && !s.soft)
+    return {
+      status: failed ? "failed" : allComplete ? "done" : "partial",
+      steps,
     }
   } finally {
-    lockClient.release()
+    await db
+      .update(syncLock)
+      .set({ lockedUntil: sql`now()` })
+      .where(eq(syncLock.token, token))
   }
 }
 
