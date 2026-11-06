@@ -70,6 +70,9 @@ export type PayoutBucket = {
   payoutDate: string | null
   /** Included invoices, plus anything already received this month. */
   totalIn: string
+  /** The month's take-home per director. Null for invoices after the months shown. */
+  takeHome: string | null
+  /** Invoices less set-asides, shared between directors. Not take-home. */
   each: string
   /** Client money that has already landed this month, and so isn't listed. */
   received: string
@@ -145,6 +148,7 @@ export function invoiceDetail(
 function buildBucket(
   month: string | null,
   payoutDate: string | null,
+  takeHome: string | null,
   rows: MoneyInRow[],
   received: Dec,
   directors: number,
@@ -200,6 +204,7 @@ function buildBucket(
   return {
     month,
     payoutDate,
+    takeHome,
     totalIn: money(totalIn),
     each: money(addEach(included)),
     received: money(received),
@@ -288,6 +293,7 @@ export function payoutBuckets(
     return buildBucket(
       m.month,
       m.payoutDate,
+      m.takeHomePerDirector,
       inMonth,
       new D(group?.received ?? 0),
       directors,
@@ -319,7 +325,7 @@ export function payoutBuckets(
       [...slots.entries()].map(([client, slot]) => [client, seriesColour(slot)])
     ),
     later: laterRows.length
-      ? buildBucket(null, null, laterRows, ZERO, directors, formatMoney)
+      ? buildBucket(null, null, null, laterRows, ZERO, directors, formatMoney)
       : null,
   }
 }

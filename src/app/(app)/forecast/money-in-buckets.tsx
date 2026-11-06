@@ -390,16 +390,21 @@ function Bucket({
           </h3>
         </div>
         <div className="flex flex-wrap items-end justify-between gap-2">
-          <p className="font-heading text-2xl font-semibold text-success tabular-nums">
-            {formatMoney(bucket.each)} each
-            <span className="block text-xs font-normal text-muted-foreground">
-              from invoices
-            </span>
-          </p>
+          {bucket.takeHome && (
+            <p className="text-xs font-medium tracking-wide text-success uppercase">
+              Take-home each
+              <span className="block font-mono text-2xl font-semibold tracking-normal normal-case tabular-nums">
+                {formatMoney(bucket.takeHome)}
+              </span>
+            </p>
+          )}
           <p className="text-sm tabular-nums">
             {formatMoney(bucket.totalIn)} invoiced in
           </p>
         </div>
+        <p className="text-xs text-muted-foreground tabular-nums">
+          Invoices after tax set-aside: {formatMoney(bucket.each)} each
+        </p>
         <SplitBar parts={bucket.segments} />
         <SplitLegend parts={bucket.segments} amount={formatMoney} />
         <p className="min-h-8 text-xs text-muted-foreground tabular-nums">

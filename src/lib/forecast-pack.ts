@@ -273,7 +273,8 @@ export function buildForecastPack(d: ForecastPackInput): string {
     [
       `### ${title}`,
       "",
-      `- **Per director from invoices:** ${b.each} (invoice amount before VAT less set-aside, shared between directors; before contractor bills and running costs, so it isn't take-home)`,
+      ...(b.takeHome ? [`- **Take-home each:** ${b.takeHome}`] : []),
+      `- **Invoices after tax set-aside:** ${b.each} each (before contractor bills and running costs, so it isn't take-home)`,
       `- **Invoiced in:** ${b.totalIn}, of which ${b.raised} raised and ${b.predicted} predicted${b.received !== "0.00" ? `, including ${b.received} already received` : ""}`,
       `- **Left out:** ${b.leftOut ? `${b.leftOut.count} invoices, worth ${b.leftOut.worth} (${b.leftOut.each} per director)` : "nothing"}`,
       "",

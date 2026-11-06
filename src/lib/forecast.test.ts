@@ -1807,6 +1807,18 @@ describe("payout buckets", () => {
   const find = (b: ReturnType<typeof buckets>["months"][number], key: string) =>
     b.clients.flatMap((c) => c.invoices).find((i) => i.row.key === key)!
 
+  it("heads each month with its take-home, not the invoice share", () => {
+    const input = baseInput({
+      settings: { ...baseInput().settings, months: 2 },
+    })
+    const result = run(input)
+    const { months, later } = payoutBuckets(result, formatMoney)
+    expect(months.map((b) => b.takeHome)).toEqual(
+      result.months.map((m) => m.takeHomePerDirector)
+    )
+    expect(later?.takeHome ?? null).toBeNull()
+  })
+
   it("puts an invoice in the month of its due date, including one due on payout day", () => {
     const { months } = buckets({
       invoices: [
