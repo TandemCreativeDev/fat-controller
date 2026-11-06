@@ -334,8 +334,11 @@ export function buildForecastPack(d: ForecastPackInput): string {
 
   const first = result.months[0].month
   const last = result.timeline.at(-1)?.date ?? result.today
+  const leftOutKeys = new Set(
+    result.expectedMoney.filter((m) => !m.included).map((m) => m.key)
+  )
   out.push(
-    "## Invoices\n\nRaised and forecast invoices dated in the months shown. Amounts are before VAT. `Late` is forecast but past its date; `missed` is no longer forecast.\n\n" +
+    "## Invoices\n\nRaised and forecast invoices dated in the months shown. Amounts are before VAT. `Late` is forecast but past its date; `missed` is no longer forecast. `Counted: no` means a director left it out, so it isn't in any figure in this document.\n\n" +
       markdownTable(
         [
           "Project",
@@ -347,6 +350,7 @@ export function buildForecastPack(d: ForecastPackInput): string {
           "Tracked days",
           "Forecast days",
           "Billed days",
+          "Counted",
           "Amount",
           "Contractor cost",
           "Set-aside",
@@ -368,6 +372,7 @@ export function buildForecastPack(d: ForecastPackInput): string {
             Number(i.trackedDays).toFixed(2),
             Number(i.forecastDays).toFixed(2),
             Number(i.totalDays).toFixed(2),
+            leftOutKeys.has(i.key) ? "no" : "yes",
             i.amount,
             i.contractorCost,
             i.setAside,

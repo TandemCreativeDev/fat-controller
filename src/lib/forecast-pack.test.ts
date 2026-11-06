@@ -191,6 +191,29 @@ describe("buildForecastPack", () => {
     expect(timeline).toMatch(/lowest -?\d/)
   })
 
+  it("marks left-out invoices in the Invoices list and drops them from the figures", () => {
+    const invoicesIn = (md: string) =>
+      md.slice(md.indexOf("## Invoices"), md.indexOf("## Contractor bills"))
+    const before = runForecast(input)
+    if (before.blocked) throw new Error("blocked")
+    const row = before.expectedMoney[0]
+    expect(invoicesIn(pack())).toContain("| Counted |")
+    expect(invoicesIn(pack())).not.toMatch(/\| no \|/)
+
+    const after = runForecast({
+      ...input,
+      expectations: [
+        { invoiceKey: row.key, excluded: true, expectedOn: null, note: null },
+      ],
+    })
+    if (after.blocked) throw new Error("blocked")
+    const md = pack({ result: after })
+    expect(invoicesIn(md)).toMatch(/\| no \|/)
+    expect(after.months[0].invoicesLanding).not.toBe(
+      before.months[0].invoicesLanding
+    )
+  })
+
   it("only includes adjustments when there are some", () => {
     expect(pack()).not.toContain("## One-off adjustments")
     expect(
