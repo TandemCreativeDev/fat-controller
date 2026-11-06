@@ -13,6 +13,7 @@ import {
   contractorPaymentExclusion,
   forecastOverride,
   holdBack,
+  invoiceExpectation,
   person,
 } from "@/db/schema"
 import { addDays, londonDate } from "@/lib/forecast"
@@ -95,6 +96,53 @@ export async function clearOverride(
     )
   refresh()
   return { ok: true, message: "Cleared." }
+}
+
+// ------------------------------------------------------------------ expected money in
+
+// The Xero invoice ID, or `<project id>|<date>` for a forecast invoice.
+const invoiceKey = z
+  .string()
+  .regex(/^[0-9a-f-]{36}(\|\d{4}-\d{2}-\d{2})?$/, "Unknown invoice")
+
+const expectationForm = z.object({
+  invoiceKey,
+  excluded: z.enum(["true", "false"]),
+  expectedOn: optionalDate,
+  note: optionalText,
+})
+
+/** Saves a what-if on an invoice. Back to the defaults, and there's nothing to keep. */
+export async function saveExpectation(
+  _prev: FormState,
+  data: FormData
+): Promise<FormState> {
+  const director = await requireDirector()
+  const parsed = expectationForm.safeParse(form(data))
+  if (!parsed.success) return { ok: false, message: firstError(parsed.error) }
+  const { invoiceKey: key, expectedOn, note } = parsed.data
+  const excluded = parsed.data.excluded === "true"
+  if (!excluded && !expectedOn && !note) {
+    await db
+      .delete(invoiceExpectation)
+      .where(eq(invoiceExpectation.invoiceKey, key))
+  } else {
+    await db
+      .insert(invoiceExpectation)
+      .values({
+        invoiceKey: key,
+        excluded,
+        expectedOn,
+        note,
+        createdBy: director.id,
+      })
+      .onConflictDoUpdate({
+        target: invoiceExpectation.invoiceKey,
+        set: { excluded, expectedOn, note, createdBy: director.id },
+      })
+  }
+  refresh()
+  return saved
 }
 
 // ------------------------------------------------------------------ bills

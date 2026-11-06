@@ -184,6 +184,13 @@ export type SalesInvoiceInput = {
   outstanding: string
 }
 
+export type InvoiceExpectationInput = {
+  invoiceKey: string
+  excluded: boolean
+  expectedOn: string | null
+  note?: string | null
+}
+
 export type OverrideInput = {
   projectId: string
   periodEnd: string
@@ -445,6 +452,24 @@ export type BuiltInvoice = {
   overrideNote: string | null
 }
 
+/** One invoice not yet fully paid, and when the forecast expects its money. */
+export type ExpectedMoney = {
+  key: string
+  projectName: string | null
+  invoiceNumber: string | null
+  invoiceDate: string
+  dueDate: string
+  status: "overdue" | "raised" | "late" | "forecast"
+  /** What's still to land, including any VAT. */
+  amount: string
+  /** Null when a director has left it out. */
+  landsOn: string | null
+  included: boolean
+  expectedOn: string | null
+  note: string | null
+  source: Source
+}
+
 export type BillPlan = {
   /** Null for a forecast bill, which isn't stored. */
   id: string | null
@@ -549,6 +574,8 @@ export type ForecastInput = {
   /** A director's real balance for today, if entered. */
   manualBalance: string | null
   taxReserveBalance: string | null
+  /** What-ifs on money expected in. */
+  expectations: InvoiceExpectationInput[]
 }
 
 export type ForecastResult =
@@ -558,6 +585,7 @@ export type ForecastResult =
       today: string
       months: MonthBreakdown[]
       invoices: BuiltInvoice[]
+      expectedMoney: ExpectedMoney[]
       bills: BillPlan[]
       timeline: TimelineEvent[]
       warnings: ForecastWarning[]
@@ -1399,6 +1427,59 @@ function shortfallIn(
   return { amount: worst, bill: onOrBefore[0] ?? due[0] }
 }
 
+/** A director's date wins, but money can't land in the past. */
+function landingDate(
+  inv: Built,
+  expectation: InvoiceExpectationInput | undefined,
+  today: string
+): string {
+  const wanted = expectation?.expectedOn ?? inv.dueDateRaw
+  return wanted > today ? wanted : today
+}
+
+/** Every invoice with money still to land, whatever its date, overdue ones first. */
+function expectedMoney(
+  input: ForecastInput,
+  invoices: Built[],
+  displayEnd: string
+): ExpectedMoney[] {
+  const { today } = input
+  const expectations = new Map(input.expectations.map((e) => [e.invoiceKey, e]))
+  return invoices
+    .filter(
+      (i) =>
+        i.status !== "missed" &&
+        new D(i.outstanding).gt(0) &&
+        i.invoiceDate <= displayEnd
+    )
+    .map((i): ExpectedMoney => {
+      const e = expectations.get(i.key)
+      const included = !e?.excluded
+      return {
+        key: i.key,
+        projectName: i.projectName,
+        invoiceNumber: i.invoiceNumber,
+        invoiceDate: i.invoiceDate,
+        dueDate: i.dueDateRaw,
+        status:
+          i.status !== "raised"
+            ? i.status === "late"
+              ? "late"
+              : "forecast"
+            : i.dueDateRaw < today
+              ? "overdue"
+              : "raised",
+        amount: money(i.outstanding),
+        landsOn: included ? landingDate(i, e, today) : null,
+        included,
+        expectedOn: e?.expectedOn ?? null,
+        note: e?.note ?? null,
+        source: e ? "override" : i.source,
+      }
+    })
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+}
+
 function prepare(
   input: ForecastInput,
   invoices: Built[],
@@ -1452,6 +1533,7 @@ function prepare(
   }
 
   // -------- expected money in
+  const expectations = new Map(input.expectations.map((e) => [e.invoiceKey, e]))
   type Owed = {
     date: string
     amount: Dec
@@ -1488,7 +1570,9 @@ function prepare(
   for (const inv of invoices) {
     const outstanding = new D(inv.outstanding)
     if (inv.status === "missed" || outstanding.lte(0)) continue
-    const landing = inv.dueDateRaw > today ? inv.dueDateRaw : today
+    const expectation = expectations.get(inv.key)
+    if (expectation?.excluded) continue
+    const landing = landingDate(inv, expectation, today)
     if (landing > lastDay) continue
     const name = inv.invoiceNumber ?? inv.projectName ?? "Invoice"
     events.push({
@@ -1503,7 +1587,7 @@ function prepare(
             : `Forecast invoice: ${name}`,
       projectId: inv.projectId,
       personId: null,
-      source: inv.source,
+      source: expectation?.expectedOn ? "override" : inv.source,
       actual: false,
     })
     const total = new D(inv.total)
@@ -1914,6 +1998,7 @@ export function runForecast(input: ForecastInput): ForecastResult {
     today,
     months,
     invoices: invoices.map(stripBuilt),
+    expectedMoney: expectedMoney(input, invoices, displayEnd),
     bills: billPlans.filter((b) => b.issuedOn <= displayEnd),
     timeline,
     warnings,

@@ -72,6 +72,7 @@ const input: ForecastInput = {
   balance: { opening: "1000.00", closing: "1000.00" },
   manualBalance: null,
   taxReserveBalance: "5000.00",
+  expectations: [],
 }
 
 function pack(extra: Partial<ForecastPackInput> = {}) {
@@ -133,6 +134,17 @@ describe("buildForecastPack", () => {
       .find((l) => l.includes("| Project Alpha |") && l.includes("2026-06-12"))
     expect(row).toContain("| 1000.00 |")
     expect(row).toContain("| override |")
+  })
+
+  it("lists money expected in, with whether it's included", () => {
+    const md = pack()
+    const section = md.slice(
+      md.indexOf("## Expected money in"),
+      md.indexOf("## Invoices")
+    )
+    expect(section).toContain("| Project Alpha |")
+    expect(section).toContain("| forecast |")
+    expect(section).toContain("| yes |")
   })
 
   it("leaves forecast daily running costs out of the timeline", () => {

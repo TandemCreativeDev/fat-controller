@@ -12,6 +12,7 @@ import {
   forecastOverride,
   forecastSnapshot,
   holdBack,
+  invoiceExpectation,
   payRate,
   person,
   project,
@@ -288,6 +289,7 @@ export async function loadForecastInput(
     bills,
     adjustments,
     holdBacks,
+    expectations,
     holidays,
     balances,
     cursor,
@@ -313,6 +315,7 @@ export async function loadForecastInput(
     db.select().from(contractorBill),
     db.select().from(cashAdjustment),
     db.select().from(holdBack),
+    db.select().from(invoiceExpectation),
     db.select({ date: bankHoliday.date }).from(bankHoliday),
     db.select().from(bankBalance).orderBy(desc(bankBalance.asOf)),
     db
@@ -438,6 +441,12 @@ export async function loadForecastInput(
           }
         : null,
     manualBalance: manual?.closingGbp ?? null,
+    expectations: expectations.map((e) => ({
+      invoiceKey: e.invoiceKey,
+      excluded: e.excluded,
+      expectedOn: e.expectedOn,
+      note: e.note,
+    })),
     taxReserveBalance:
       reserveLatest !== undefined
         ? addUp(

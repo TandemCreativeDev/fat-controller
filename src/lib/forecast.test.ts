@@ -174,6 +174,7 @@ function baseInput(overrides: Partial<ForecastInput> = {}): ForecastInput {
     balance: { opening: "1000.00", closing: "1000.00" },
     manualBalance: null,
     taxReserveBalance: "5000.00",
+    expectations: [],
     ...overrides,
   }
 }
@@ -1363,6 +1364,74 @@ describe("the breakdown", () => {
     expect(june.otherTransfersOut).toBe("-75.00")
     expect(r.warnings.map((w) => w.kind)).not.toContain("breakdown")
     expect(r.warnings.map((w) => w.kind)).not.toContain("reconciliation")
+  })
+})
+
+describe("expected money in", () => {
+  // The overdue invoice is £15,000, with a £1,200 set-aside.
+  const withExpectation = (e: Partial<ForecastInput["expectations"][number]>) =>
+    run(
+      baseInput({
+        expectations: [
+          { invoiceKey: "inv1", excluded: false, expectedOn: null, ...e },
+        ],
+      })
+    )
+  const row = (r: ReturnType<typeof run>) =>
+    r.expectedMoney.find((m) => m.key === "inv1")!
+
+  it("lists every unpaid invoice, however old, and how it's expected", () => {
+    const r = run(baseInput())
+    expect(row(r)).toMatchObject({
+      status: "overdue",
+      amount: "15000.00",
+      landsOn: "2026-06-01",
+      included: true,
+      source: "actual",
+    })
+    expect(r.expectedMoney.map((m) => m.status)).toContain("forecast")
+  })
+
+  it("leaves an invoice out: no money, no set-aside, and the bill still has to be paid", () => {
+    const base = run(baseInput()).months[0]
+    const r = withExpectation({ excluded: true })
+    const june = r.months[0]
+    expect(row(r)).toMatchObject({
+      included: false,
+      landsOn: null,
+      source: "override",
+    })
+    expect(june.invoicesLanding).toBe("6500.00")
+    expect(Number(june.setAsides)).toBe(Number(base.setAsides) + 1200)
+    expect(
+      r.timeline.some(
+        (e) => e.date === "2026-06-01" && e.type === "expected_invoice"
+      )
+    ).toBe(false)
+    expect(Number(june.takeHomePerDirector)).toBeLessThan(
+      Number(base.takeHomePerDirector)
+    )
+  })
+
+  it("moves when an invoice lands, taking its set-aside with it", () => {
+    const r = withExpectation({ expectedOn: "2026-07-10" })
+    expect(row(r).landsOn).toBe("2026-07-10")
+    expect(
+      r.timeline.filter((e) => e.date === "2026-07-10").map((e) => e.type)
+    ).toEqual([])
+    expect(r.months[0].invoicesLanding).toBe("6500.00")
+  })
+
+  it("treats a date in the past as today", () => {
+    expect(row(withExpectation({ expectedOn: "2026-05-01" })).landsOn).toBe(
+      "2026-06-01"
+    )
+  })
+
+  it("keeps forecast invoices that land after the window, once dated inside it", () => {
+    const r = run(baseInput())
+    const late = r.expectedMoney.find((m) => m.invoiceDate === "2026-06-26")!
+    expect(late.landsOn).toBe("2026-07-03")
   })
 })
 

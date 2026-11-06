@@ -27,6 +27,7 @@ import {
   forecastCharts,
   type BillPlan,
   type BuiltInvoice,
+  type ExpectedMoney,
   type MonthBreakdown,
 } from "@/lib/forecast"
 import { getForecastPage, type ForecastPageData } from "@/lib/forecast-store"
@@ -48,6 +49,7 @@ import {
   planBill,
   saveAdjustment,
   saveBill,
+  saveExpectation,
   saveHoldBack,
   saveManualBalance,
   saveOverride,
@@ -227,6 +229,98 @@ function Breakdown({ months }: { months: MonthBreakdown[] }) {
         ))}
       </TableBody>
     </Table>
+  )
+}
+
+function ExpectedMoneyIn({ rows }: { rows: ExpectedMoney[] }) {
+  if (rows.length === 0)
+    return <p className="text-sm text-muted-foreground">Nothing expected in.</p>
+  return (
+    <div className="flex flex-col gap-4">
+      {rows.map((m) => (
+        <div
+          key={m.key}
+          className={cn(
+            "flex flex-col gap-3 border-b border-border/60 pb-4 last:border-0",
+            !m.included && "opacity-60"
+          )}
+        >
+          <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+            <span className="font-medium">
+              {m.projectName ?? "No project"}
+              {m.invoiceNumber && ` · ${m.invoiceNumber}`}
+              <span
+                className={cn(
+                  "ml-2 text-xs font-normal text-muted-foreground",
+                  m.status === "overdue" && "text-destructive"
+                )}
+              >
+                {m.status}
+                {!m.included && ", left out"}
+                {m.expectedOn && ", date moved"}
+              </span>
+            </span>
+            <span className="font-medium tabular-nums">
+              {formatPence(m.amount)}
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Dated {formatDay(m.invoiceDate)}, due {formatDay(m.dueDate)}.{" "}
+            {m.landsOn
+              ? `Expected to land ${formatDay(m.landsOn)}.`
+              : "Not counted in the forecast."}
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <ActionForm
+              action={saveExpectation}
+              submit="Save date"
+              variant="outline"
+              className="flex-row flex-wrap items-end"
+            >
+              <input type="hidden" name="invoiceKey" value={m.key} />
+              <input
+                type="hidden"
+                name="excluded"
+                value={m.included ? "false" : "true"}
+              />
+              <Field
+                id={`lands-${m.key}`}
+                name="expectedOn"
+                label="Expected to land"
+                type="date"
+                className="w-40"
+                defaultValue={m.expectedOn ?? ""}
+              />
+              <Field
+                id={`money-note-${m.key}`}
+                name="note"
+                label="Note"
+                className="w-48"
+                defaultValue={m.note ?? ""}
+              />
+            </ActionForm>
+            <ActionForm
+              action={saveExpectation}
+              submit={m.included ? "Leave out" : "Put back"}
+              variant="ghost"
+            >
+              <input type="hidden" name="invoiceKey" value={m.key} />
+              <input
+                type="hidden"
+                name="excluded"
+                value={m.included ? "true" : "false"}
+              />
+              <input
+                type="hidden"
+                name="expectedOn"
+                value={m.expectedOn ?? ""}
+              />
+              <input type="hidden" name="note" value={m.note ?? ""} />
+            </ActionForm>
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -906,6 +1000,19 @@ export default async function ForecastPage({
             </CardHeader>
             <CardContent>
               <Breakdown months={result.months} />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Expected money in</CardTitle>
+              <CardDescription>
+                Every invoice not yet paid. Leave one out or move its date to
+                see take-home change. The work is still done, so its contractor
+                cost stays; to change the work itself, use an override below.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ExpectedMoneyIn rows={result.expectedMoney} />
             </CardContent>
           </Card>
           <Card>

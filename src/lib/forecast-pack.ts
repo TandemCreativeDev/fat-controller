@@ -160,6 +160,36 @@ export function buildForecastPack(d: ForecastPackInput): string {
         : d.warnings.map((w) => `- ${w.message}`).join("\n"))
   )
 
+  out.push(
+    "## Expected money in\n\nEvery invoice not yet fully paid, whatever its date, overdue first. Amounts are what's still to land, including any VAT. A director can leave one out or move its date as a what-if; those show the `override` source.\n\n" +
+      markdownTable(
+        [
+          "Project",
+          "Invoice",
+          "Invoice date",
+          "Due",
+          "Status",
+          "Amount",
+          "Included",
+          "Expected to land",
+          "Source",
+          "Note",
+        ],
+        result.expectedMoney.map((m) => [
+          m.projectName,
+          m.invoiceNumber,
+          m.invoiceDate,
+          m.dueDate,
+          m.status,
+          m.amount,
+          m.included ? "yes" : "no",
+          m.landsOn,
+          m.source,
+          m.note,
+        ])
+      )
+  )
+
   const first = result.months[0].month
   const last = result.timeline.at(-1)?.date ?? result.today
   out.push(

@@ -195,6 +195,18 @@ export const forecastOverride = pgTable(
   (t) => [primaryKey({ columns: [t.projectId, t.periodEnd] })]
 )
 
+/**
+ * A director's what-if on money expected in: leave an invoice out, or move when it
+ * lands. Keyed by the Xero invoice ID, or `<project id>|<date>` for a forecast one.
+ */
+export const invoiceExpectation = pgTable("invoice_expectation", {
+  invoiceKey: text("invoice_key").primaryKey(),
+  excluded: boolean("excluded").notNull().default(false),
+  expectedOn: date("expected_on"),
+  note: text("note"),
+  createdBy: createdBy(),
+})
+
 export const holdBack = pgTable("hold_back", {
   /** First day of the month. */
   month: date("month").primaryKey(),
