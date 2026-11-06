@@ -278,6 +278,14 @@ function Row({
             ? "One-off"
             : `${formatDayShort(row.periodStart)} – ${formatDayShort(row.periodEnd)}`}
         </TableCell>
+        <TableCell
+          className={cn(
+            "whitespace-nowrap",
+            !row.included && "text-muted-foreground line-through"
+          )}
+        >
+          {formatDayShort(row.landsOn)}
+        </TableCell>
         <TableCell className="text-right whitespace-nowrap tabular-nums">
           {row.custom
             ? "–"
@@ -298,14 +306,6 @@ function Row({
         </TableCell>
         <TableCell className="text-right tabular-nums">
           {formatPence(row.contractorCost)}
-        </TableCell>
-        <TableCell
-          className={cn(
-            "whitespace-nowrap",
-            !row.included && "text-muted-foreground line-through"
-          )}
-        >
-          {formatDayShort(row.landsOn)}
         </TableCell>
         <TableCell className={cn(overdue && "font-medium text-destructive")}>
           {row.included ? row.status : `left out (${row.status})`}
@@ -339,6 +339,7 @@ export function MoneyInTable({ groups }: { groups: MoneyInGroup[] }) {
           </TableHead>
           <TableHead>Project</TableHead>
           <TableHead>Period, to invoice date</TableHead>
+          <TableHead>Lands</TableHead>
           <TableHead className="text-right">
             Days
             <span className="block text-xs font-normal text-muted-foreground">
@@ -347,7 +348,6 @@ export function MoneyInTable({ groups }: { groups: MoneyInGroup[] }) {
           </TableHead>
           <TableHead className="text-right">Amount</TableHead>
           <TableHead className="text-right">Contractor cost</TableHead>
-          <TableHead>Lands</TableHead>
           <TableHead>Status</TableHead>
         </TableRow>
       </TableHeader>
@@ -364,13 +364,13 @@ export function MoneyInTable({ groups }: { groups: MoneyInGroup[] }) {
             </TableRow>
             {g.received !== null && g.received !== "0.00" && (
               <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={4} className="text-muted-foreground">
+                <TableCell colSpan={5} className="text-muted-foreground">
                   Already received this month
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {formatPence(g.received)}
                 </TableCell>
-                <TableCell colSpan={3} />
+                <TableCell colSpan={2} />
               </TableRow>
             )}
             {g.rows.map((row) => (
@@ -384,7 +384,7 @@ export function MoneyInTable({ groups }: { groups: MoneyInGroup[] }) {
               />
             ))}
             <TableRow className="font-medium hover:bg-transparent">
-              <TableCell colSpan={4}>
+              <TableCell colSpan={5}>
                 {g.kind === "month"
                   ? "Invoices landing"
                   : "Total, not in the months above"}
@@ -395,7 +395,7 @@ export function MoneyInTable({ groups }: { groups: MoneyInGroup[] }) {
               <TableCell className="text-right tabular-nums">
                 {formatPence(g.totalCost)}
               </TableCell>
-              <TableCell colSpan={2} />
+              <TableCell />
             </TableRow>
           </Fragment>
         ))}
