@@ -104,7 +104,7 @@ export function invoiceShare(row: MoneyInRow, directors: number): string {
   return money(penny(kept.div(directors)))
 }
 
-/** "OZEAON Platform" under the client "OZEAON PTE. LTD." reads as "Platform". */
+/** "Acme Portal" under the client "ACME HOLDINGS LTD" reads as "Portal". */
 export function projectTitle(name: string, client: string): string {
   const first = client.split(/\s+/)[0]?.toLowerCase()
   const words = name.split(/\s+/)

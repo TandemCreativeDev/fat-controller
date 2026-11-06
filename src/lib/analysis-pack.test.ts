@@ -68,9 +68,9 @@ const input: AnalysisPackInput = {
     {
       month: "2026-09-01",
       director: "Director One",
-      salary: 1047.5,
+      salary: 1000,
       dividends: 2000.2,
-      total: 3047.7,
+      total: 3000.2,
     },
   ],
 }
@@ -111,7 +111,7 @@ describe("buildAnalysisPack", () => {
       "| 2026-07 | Director One | 1000.00 | 3000.10 | 4000.10 |"
     )
     const lifetime = md.split("## Take-home totals")[1].split("##")[0]
-    expect(lifetime).toContain("| Director One | 2047.50 | 5000.30 | 7047.80 |")
+    expect(lifetime).toContain("| Director One | 2000.00 | 5000.30 | 7000.30 |")
   })
 
   it("escapes pipes in cell text", () => {
