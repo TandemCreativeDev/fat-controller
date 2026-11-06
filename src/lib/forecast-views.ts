@@ -147,15 +147,24 @@ export function inOutMonths(
     row("other", "VAT and one-offs", f.other, CATEGORY_COLOUR.other),
   ]
 
-  const past = result.cashHistory.map((h): InOutMonth => ({
-    ...monthSum(
-      h.month,
-      h.clients.map((c) => row(c.label, c.label, c.amount, colourOf(c.label))),
-      outRows(h)
-    ),
-    basis: "actual",
-    fromReserve: h.fromReserve,
-  }))
+  const past = result.cashHistory.map((h): InOutMonth => {
+    // Money moved out and back in the same month is a correction, not a set-aside
+    // and a withdrawal, so only what's left of either counts.
+    const moved = new D(h.setAsides)
+    const back = new D(h.fromReserve)
+    const reversed = D.min(moved, back)
+    return {
+      ...monthSum(
+        h.month,
+        h.clients.map((c) =>
+          row(c.label, c.label, c.amount, colourOf(c.label))
+        ),
+        outRows({ ...h, setAsides: moved.minus(reversed) })
+      ),
+      basis: "actual",
+      fromReserve: money(back.minus(reversed)),
+    }
+  })
 
   const currentMonth = monthStart(result.today)
   const salaryPlan = new D(result.salaryPerMonth)

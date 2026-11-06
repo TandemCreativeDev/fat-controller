@@ -2176,16 +2176,34 @@ describe("in and out", () => {
       month: "2026-05-01",
       basis: "actual",
       moneyInTotal: "5010.00",
-      moneyOutTotal: "3600.00",
-      left: "1410.00",
-      fromReserve: "999.00",
+      // The 400 set aside and the 999 back cancel out, leaving 599 taken out.
+      moneyOutTotal: "3200.00",
+      left: "1810.00",
+      fromReserve: "599.00",
     })
     expect(may.moneyOut.map((r) => r.label)).toEqual([
       "Contractors",
-      "Tax set-asides",
       "Running costs",
       "Director salaries",
     ])
+  })
+
+  it("treats money moved out and straight back as a correction", () => {
+    const [may] = months(
+      run(
+        baseInput({
+          cash: [
+            line("client_payment", "2026-05-10", "5000.00", "in"),
+            line("set_aside", "2026-05-11", "1000.00"),
+            line("backstop_in", "2026-05-12", "450.00", "in"),
+          ],
+        })
+      )
+    )
+    expect(may.fromReserve).toBe("0.00")
+    expect(may.moneyOut.find((r) => r.key === "set_asides")!.amount).toBe(
+      "550.00"
+    )
   })
 
   it("names past money in by Xero client", () => {
