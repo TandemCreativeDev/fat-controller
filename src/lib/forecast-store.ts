@@ -18,6 +18,7 @@ import {
   person,
   project,
   projectSolidtime,
+  runningCostFixed,
   runningCostOneOff,
   solidtimeMember,
   solidtimeProject,
@@ -295,6 +296,7 @@ export async function loadForecastInput(
     customInvoices,
     contacts,
     oneOffCosts,
+    fixedCosts,
     holidays,
     balances,
     cursor,
@@ -326,6 +328,7 @@ export async function loadForecastInput(
       .select({ id: xeroContact.contactId, name: xeroContact.name })
       .from(xeroContact),
     db.select({ id: runningCostOneOff.sourceId }).from(runningCostOneOff),
+    db.select().from(runningCostFixed),
     db.select({ date: bankHoliday.date }).from(bankHoliday),
     db.select().from(bankBalance).orderBy(desc(bankBalance.asOf)),
     db
@@ -455,6 +458,10 @@ export async function loadForecastInput(
     manualBalance: manual?.closingGbp ?? null,
     contacts,
     oneOffCosts: oneOffCosts.map((o) => o.id),
+    fixedCosts: fixedCosts.map((f) => ({
+      supplierKey: f.supplierKey,
+      amountGbp: f.amountGbp,
+    })),
     customInvoices: customInvoices.map((c) => ({
       id: c.id,
       label: c.label,

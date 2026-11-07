@@ -1,3 +1,5 @@
+import { ActionForm } from "@/components/action-form"
+import { Field } from "@/components/form-fields"
 import {
   Card,
   CardContent,
@@ -18,6 +20,7 @@ import {
   formatPence,
 } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { saveRunningCostFixed } from "./actions"
 import { OneOffBox } from "./one-off-box"
 
 const figure = "font-mono tabular-nums"
@@ -25,6 +28,7 @@ const figure = "font-mono tabular-nums"
 const STATUS: Record<RunningCostStatus, string> = {
   in_average: "In the average",
   one_off: "Left out",
+  fixed: "Replaced by the fixed amount",
   this_month: "Not in the average yet",
   older: "Too old to count",
 }
@@ -46,7 +50,7 @@ function Month({ month }: { month: RunningCostMonth }) {
       className={cn(
         "flex flex-col gap-1 rounded-lg border border-border bg-background/60 p-3",
         month.inAverage && "border-violet-400/60",
-        hasForecast && !hasSpend && "border-dashed"
+        hasForecast && !hasSpend && "border-primary/60"
       )}
     >
       <p className="text-xs font-medium">{formatMonth(month.month)}</p>
@@ -80,13 +84,31 @@ function Group({ group }: { group: RunningCostGroup }) {
           <p className="text-xs text-muted-foreground">
             {group.charges.length}{" "}
             {group.charges.length === 1 ? "charge" : "charges"},{" "}
-            {formatMoney(group.perMonth)} a month in the average
+            {formatMoney(group.perMonth)} a month in the forecast
           </p>
         </div>
         <p className={cn(figure, "text-sm font-medium")}>
           {formatPence(group.total)}
         </p>
       </header>
+      <ActionForm
+        key={`${group.key}-${group.fixedAmount}`}
+        action={saveRunningCostFixed}
+        submit="Save"
+        variant="outline"
+        className="flex-row flex-wrap items-end"
+      >
+        <input type="hidden" name="supplierKey" value={group.key} />
+        <Field
+          id={`fixed-${group.key.replace(/\W+/g, "-")}`}
+          name="amountGbp"
+          label="Fixed amount a month (£)"
+          hint="Empty uses the average. 0 means it has stopped."
+          inputMode="decimal"
+          className="min-w-0 flex-1 basis-48"
+          defaultValue={group.fixedAmount ?? ""}
+        />
+      </ActionForm>
       {group.recurring && markable.length > 1 && (
         <OneOffBox
           sourceIds={markable.map((c) => c.sourceId)}
@@ -162,7 +184,7 @@ function Groups({
 
 /** Every running cost so far and to come, with a way to leave one-offs out of the average. */
 export function RunningCosts({ tally }: { tally: RunningCostTally }) {
-  const changed = tally.average !== tally.averageWithOneOffs
+  const changed = tally.average !== tally.averageFromBank
   return (
     <>
       <Card>
@@ -170,8 +192,9 @@ export function RunningCosts({ tally }: { tally: RunningCostTally }) {
           <CardTitle>Running costs over the forecast</CardTitle>
           <CardDescription>
             Future months use the average of the last three complete months,
-            outlined below. A one-off stays in what was spent, but leaves the
-            average.
+            outlined below, with any fixed amounts you set in place of a
+            supplier&apos;s share. A one-off stays in what was spent, but leaves
+            the average.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-5">
@@ -185,7 +208,8 @@ export function RunningCosts({ tally }: { tally: RunningCostTally }) {
               </p>
               {changed && (
                 <p className="text-xs text-muted-foreground">
-                  {formatMoney(tally.averageWithOneOffs)} with the one-offs
+                  {formatMoney(tally.averageFromBank)} before one-offs and fixed
+                  amounts
                 </p>
               )}
             </div>

@@ -47,7 +47,7 @@ function Chip({ chip, hidden }: { chip: TimelineChip; hidden: boolean }) {
       title={list}
       className={cn(
         "inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs",
-        chip.predicted ? "border-dashed border-primary/60" : "border-border",
+        chip.predicted ? "border-primary/60" : "border-border",
         hidden && "invisible"
       )}
     >

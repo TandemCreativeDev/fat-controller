@@ -202,6 +202,7 @@ function baseInput(overrides: Partial<ForecastInput> = {}): ForecastInput {
     expectations: [],
     customInvoices: [],
     oneOffCosts: [],
+    fixedCosts: [],
     contacts: [
       { id: "client-a", name: "ALPHA HOLDINGS LTD" },
       { id: "client-b", name: "Beta Partners" },
@@ -2765,12 +2766,51 @@ describe("running cost tally", () => {
   const tally = (oneOffCosts: string[] = []) =>
     run(baseInput({ cash, contacts, oneOffCosts }))
 
+  it("uses a supplier's fixed amount instead of its share of the average", () => {
+    const fixedCosts = [{ supplierKey: "ct-sub", amountGbp: "45.00" }]
+    const r = run(baseInput({ cash, contacts, fixedCosts }))
+    // The shop's 900 over three months, plus 45, without the subscription's 30.
+    expect(r.runningCostAverage).toBe("345.00")
+    expect(r.runningCosts.averageFromBank).toBe("330.00")
+    const sub = r.runningCosts.recurring[0]
+    expect(sub.fixedAmount).toBe("45.00")
+    expect(sub.perMonth).toBe("45.00")
+    expect(sub.charges.every((c) => !c.canMark)).toBe(true)
+    expect(sub.charges[0].status).toBe("fixed")
+    // What was spent doesn't change: only what's forecast.
+    expect(
+      r.runningCosts.months.find((m) => m.month === "2026-05-01")!.spent
+    ).toBe("30.00")
+  })
+
+  it("treats a fixed amount of zero as a supplier that has stopped", () => {
+    const fixedCosts = [{ supplierKey: "ct-sub", amountGbp: "0.00" }]
+    expect(
+      run(baseInput({ cash, contacts, fixedCosts })).runningCostAverage
+    ).toBe("300.00")
+  })
+
+  it("keeps a fixed amount visible when the supplier has no charges", () => {
+    const fixedCosts = [{ supplierKey: "ct-new", amountGbp: "20.00" }]
+    const r = run(
+      baseInput({
+        cash,
+        contacts: [...contacts, { id: "ct-new", name: "New one" }],
+        fixedCosts,
+      })
+    )
+    expect(r.runningCostAverage).toBe("350.00")
+    const added = r.runningCosts.single.find((g) => g.key === "ct-new")!
+    expect(added.label).toBe("New one")
+    expect(added.charges).toEqual([])
+  })
+
   it("leaves a one-off out of the average but not out of what was spent", () => {
     expect(tally().runningCostAverage).toBe("330.00")
     const r = tally(["laptop"])
     expect(r.runningCostAverage).toBe("30.00")
     expect(r.runningCosts.average).toBe("30.00")
-    expect(r.runningCosts.averageWithOneOffs).toBe("330.00")
+    expect(r.runningCosts.averageFromBank).toBe("330.00")
     const april = r.runningCosts.months.find((m) => m.month === "2026-04-01")!
     expect(april.total).toBe("930.00")
     expect(april.oneOffs).toBe("900.00")

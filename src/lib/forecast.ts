@@ -605,6 +605,8 @@ export type ForecastInput = {
   contacts: { id: string; name: string }[]
   /** Running-cost bank movements marked as one-offs, by source ID. */
   oneOffCosts: string[]
+  /** Suppliers with a known monthly cost, instead of their share of the average. */
+  fixedCosts: { supplierKey: string; amountGbp: string }[]
 }
 
 /** A past month's bank movements, by what they were for. */
@@ -1917,17 +1919,31 @@ function prepare(
 const runningCostOf = (l: CashLine) =>
   l.direction === "out" ? new D(l.amount) : new D(l.amount).negated()
 
+/** Who a running cost was paid to. References differ between charges, so they don't split a payee. */
+const runningCostKey = (l: {
+  contactId: string | null
+  description: string | null
+}) =>
+  l.contactId ??
+  `text:${(l.description ?? "")
+    .toLowerCase()
+    .replace(/[^a-z]+/g, " ")
+    .trim()}`
+
 /**
  * The average of the last three complete months of running-cost spend,
- * leaving out anything a director marked as a one-off.
+ * leaving out anything a director marked as a one-off. A supplier with a fixed
+ * monthly amount counts at that amount instead of its share of the average.
  */
 function runningCostAverage(
   input: ForecastInput,
-  options: { withOneOffs?: boolean } = {}
+  options: { fromBankOnly?: boolean } = {}
 ): Dec {
   const end = monthStart(input.today)
   const start = addMonths(end, -3)
-  const oneOffs = new Set(options.withOneOffs ? [] : input.oneOffCosts)
+  const oneOffs = new Set(options.fromBankOnly ? [] : input.oneOffCosts)
+  const fixed = options.fromBankOnly ? [] : input.fixedCosts
+  const fixedKeys = new Set(fixed.map((f) => f.supplierKey))
   const spent = sum(
     input.cash
       .filter(
@@ -1935,11 +1951,12 @@ function runningCostAverage(
           l.kind === "running_cost" &&
           l.date >= start &&
           l.date < end &&
-          !oneOffs.has(l.sourceId)
+          !oneOffs.has(l.sourceId) &&
+          !fixedKeys.has(runningCostKey(l))
       )
       .map(runningCostOf)
   )
-  return penny(spent.div(3))
+  return penny(spent.div(3).plus(sum(fixed.map((f) => new D(f.amountGbp)))))
 }
 
 export type RunningCostStatus =
@@ -1947,6 +1964,8 @@ export type RunningCostStatus =
   | "in_average"
   /** Inside those months, but marked as a one-off. */
   | "one_off"
+  /** Not used, because the supplier has a fixed monthly amount. */
+  | "fixed"
   /** This month: the average will start using it next month. */
   | "this_month"
   /** Before those months, so it no longer affects the forecast. */
@@ -1969,8 +1988,10 @@ export type RunningCostGroup = {
   /** Charged in more than one month. */
   recurring: boolean
   total: string
-  /** What this adds to the monthly average. */
+  /** What this adds to the monthly forecast. */
   perMonth: string
+  /** The director's known monthly amount, if there is one. */
+  fixedAmount: string | null
   charges: RunningCostCharge[]
 }
 
@@ -1986,7 +2007,8 @@ export type RunningCostMonth = {
 
 export type RunningCostTally = {
   average: string
-  averageWithOneOffs: string
+  /** The plain three-month average, before one-offs and fixed amounts. */
+  averageFromBank: string
   /** Spent so far, in every month listed. */
   spent: string
   /** Still to come, at the average, up to the last forecast month. */
@@ -2007,6 +2029,9 @@ function runningCostTally(
   const windowStart = addMonths(thisMonth, -3)
   const oneOffs = new Set(input.oneOffCosts)
   const contactName = new Map(input.contacts.map((c) => [c.id, c.name]))
+  const fixedBy = new Map(
+    input.fixedCosts.map((f) => [f.supplierKey, money(f.amountGbp)])
+  )
 
   type Raw = {
     sourceId: string
@@ -2030,21 +2055,18 @@ function runningCostTally(
       })
   }
 
+  const keyOf = runningCostKey
   const statusOf = (r: Raw): RunningCostStatus => {
-    if (r.date >= thisMonth) return "this_month"
     if (r.date < windowStart) return "older"
+    if (fixedBy.has(keyOf(r))) return "fixed"
+    if (r.date >= thisMonth) return "this_month"
     return oneOffs.has(r.sourceId) ? "one_off" : "in_average"
   }
-  // Dates and references differ between charges, so they don't split a payee.
-  const keyOf = (r: Raw) =>
-    r.contactId ??
-    `text:${(r.description ?? "")
-      .toLowerCase()
-      .replace(/[^a-z]+/g, " ")
-      .trim()}`
   const groups = new Map<string, Raw[]>()
   for (const r of bySource.values())
     groups.set(keyOf(r), [...(groups.get(keyOf(r)) ?? []), r])
+  // A fixed amount always stays visible, so it can be changed or cleared.
+  for (const key of fixedBy.keys()) if (!groups.has(key)) groups.set(key, [])
 
   // Sorted ignoring one-offs, so ticking one doesn't move anything on the page.
   const windowSpend = (key: string) =>
@@ -2060,25 +2082,29 @@ function runningCostTally(
       return {
         key,
         label:
-          (first.contactId && contactName.get(first.contactId)) ||
-          first.description ||
+          contactName.get(key) ||
+          first?.description ||
+          key.replace(/^text:/, "") ||
           "No description",
         recurring: new Set(raws.map((r) => monthStart(r.date))).size > 1,
         total: money(sum(raws.map((r) => r.amount))),
-        perMonth: money(
-          sum(
-            raws
-              .filter((r) => statusOf(r) === "in_average")
-              .map((r) => r.amount)
-          ).div(3)
-        ),
+        perMonth:
+          fixedBy.get(key) ??
+          money(
+            sum(
+              raws
+                .filter((r) => statusOf(r) === "in_average")
+                .map((r) => r.amount)
+            ).div(3)
+          ),
+        fixedAmount: fixedBy.get(key) ?? null,
         charges: sorted.map((r) => ({
           sourceId: r.sourceId,
           date: r.date,
           amount: money(r.amount),
           oneOff: oneOffs.has(r.sourceId),
           status: statusOf(r),
-          canMark: statusOf(r) !== "older",
+          canMark: statusOf(r) !== "older" && statusOf(r) !== "fixed",
         })),
       }
     })
@@ -2128,7 +2154,7 @@ function runningCostTally(
   const total = sum(months.map((m) => new D(m.total)))
   return {
     average: money(runningCostAverage(input)),
-    averageWithOneOffs: money(runningCostAverage(input, { withOneOffs: true })),
+    averageFromBank: money(runningCostAverage(input, { fromBankOnly: true })),
     spent: money(spent),
     forecast: money(total.minus(spent)),
     total: money(total),

@@ -243,10 +243,7 @@ function StatusPill({ invoice }: { invoice: BucketInvoice }) {
       </Badge>
     )
   return (
-    <Badge
-      variant="outline"
-      className="border-dashed border-primary text-foreground"
-    >
+    <Badge variant="outline" className="border-primary text-foreground">
       {row.custom ? "One-off" : row.status === "late" ? "Late" : "Predicted"}
     </Badge>
   )
@@ -269,7 +266,7 @@ function InvoiceCard({
     <li
       className={cn(
         "flex flex-col gap-2 rounded-lg border bg-background p-3 text-sm",
-        kind === "predicted" && "border-dashed border-primary/60",
+        kind === "predicted" && "border-primary/60",
         kind === "raised" && "border-solid border-border",
         kind === "overdue" && "border-solid border-destructive/60",
         !row.included && "opacity-50"

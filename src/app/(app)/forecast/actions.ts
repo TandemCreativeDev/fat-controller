@@ -16,6 +16,7 @@ import {
   holdBack,
   invoiceExpectation,
   person,
+  runningCostFixed,
   runningCostOneOff,
 } from "@/db/schema"
 import { addDays, londonDate } from "@/lib/forecast"
@@ -65,6 +66,38 @@ export async function saveRunningCostOneOff(
     await db
       .delete(runningCostOneOff)
       .where(inArray(runningCostOneOff.sourceId, sourceIds))
+  refresh()
+  return saved
+}
+
+const fixedForm = z.object({
+  supplierKey: z.string().min(1),
+  amountGbp: optionalMoney.refine((v) => !v || Number(v) >= 0, {
+    message: "Enter 0 or more",
+  }),
+})
+
+/** Set what a supplier costs a month. An empty amount goes back to the average. */
+export async function saveRunningCostFixed(
+  _prev: FormState,
+  data: FormData
+): Promise<FormState> {
+  const director = await requireDirector()
+  const parsed = fixedForm.safeParse(form(data))
+  if (!parsed.success) return { ok: false, message: firstError(parsed.error) }
+  const { supplierKey, amountGbp } = parsed.data
+  if (amountGbp === null)
+    await db
+      .delete(runningCostFixed)
+      .where(eq(runningCostFixed.supplierKey, supplierKey))
+  else
+    await db
+      .insert(runningCostFixed)
+      .values({ supplierKey, amountGbp, createdBy: director.id })
+      .onConflictDoUpdate({
+        target: runningCostFixed.supplierKey,
+        set: { amountGbp, createdBy: director.id },
+      })
   refresh()
   return saved
 }

@@ -232,6 +232,15 @@ export const runningCostOneOff = pgTable("running_cost_one_off", {
   createdAt: tstz("created_at").notNull().defaultNow(),
 })
 
+/** A supplier's known monthly cost: replaces its share of the running-cost average. */
+export const runningCostFixed = pgTable("running_cost_fixed", {
+  /** The Xero contact ID, or "text:" and the bank description if there's no contact. */
+  supplierKey: text("supplier_key").primaryKey(),
+  amountGbp: money("amount_gbp").notNull(),
+  createdBy: createdBy(),
+  createdAt: tstz("created_at").notNull().defaultNow(),
+})
+
 export const holdBack = pgTable("hold_back", {
   /** First day of the month. */
   month: date("month").primaryKey(),

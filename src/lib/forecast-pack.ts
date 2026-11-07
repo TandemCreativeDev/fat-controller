@@ -109,7 +109,7 @@ export function buildForecastPack(d: ForecastPackInput): string {
       "- **Hold-back:** kept from a month's payout when next month's contractor bills couldn't otherwise be paid by their due dates.",
       `- **VAT:** ${settings.vatRegisteredFrom ? `registered from ${settings.vatRegisteredFrom}, at ${percent(settings.vatRate)}.` : "not registered."}`,
       `- **Director salary:** ${settings.directorSalaryGbp} a month each, paid inside the month-end payout. There are ${result.directorCount} directors.`,
-      `- **Running costs:** forecast at ${result.runningCostAverage} a month, the average of the last three complete months, leaving out charges marked as one-offs (${result.runningCosts.averageWithOneOffs} with them).`,
+      `- **Running costs:** forecast at ${result.runningCostAverage} a month, the average of the last three complete months, leaving out charges marked as one-offs and using any fixed amounts set for a supplier (${result.runningCosts.averageFromBank} from the bank alone).`,
       "- **Tracking start:** " + settings.startDate + ".",
       "",
       "### Source tags",
@@ -493,7 +493,7 @@ export function buildForecastPack(d: ForecastPackInput): string {
       )
     )
   out.push(
-    `## Running costs\n\nForecast at ${costs.average} a month (${costs.averageWithOneOffs} with one-offs). Spent so far: ${costs.spent}. Still to come: ${costs.forecast}. Total: ${costs.total}. Status \`in_average\` means one of the three months behind the average, \`one_off\` is left out of it, \`this_month\` isn't in it yet, and \`older\` no longer counts. One-offs still count as money spent.\n\n` +
+    `## Running costs\n\nForecast at ${costs.average} a month (${costs.averageFromBank} before one-offs and fixed amounts). Spent so far: ${costs.spent}. Still to come: ${costs.forecast}. Total: ${costs.total}. Status \`in_average\` means one of the three months behind the average, \`one_off\` is left out of it, \`fixed\` is replaced by the supplier's fixed monthly amount, \`this_month\` isn't in it yet, and \`older\` no longer counts. One-offs still count as money spent.\n\n` +
       markdownTable(
         ["Month", "Total", "Spent", "Forecast", "One-offs", "In the average"],
         costs.months.map((m) => [
@@ -505,7 +505,12 @@ export function buildForecastPack(d: ForecastPackInput): string {
           m.inAverage ? "yes" : "no",
         ])
       ) +
-      `\n\n### Recurring\n\n${costTable(costs.recurring)}\n\n### Single charges\n\n${costTable(costs.single)}`
+      `\n\n### Fixed monthly amounts\n\n${markdownTable(
+        ["Paid to", "Amount a month"],
+        [...costs.recurring, ...costs.single]
+          .filter((g) => g.fixedAmount !== null)
+          .map((g) => [g.label, g.fixedAmount])
+      )}\n\n### Recurring\n\n${costTable(costs.recurring)}\n\n### Single charges\n\n${costTable(costs.single)}`
   )
 
   out.push(

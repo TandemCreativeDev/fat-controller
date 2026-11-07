@@ -76,6 +76,7 @@ const input: ForecastInput = {
   expectations: [],
   customInvoices: [],
   oneOffCosts: [],
+  fixedCosts: [],
   contacts: [],
 }
 

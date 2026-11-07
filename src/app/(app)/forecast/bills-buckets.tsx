@@ -164,9 +164,7 @@ function BillCardView({
     <li
       className={cn(
         "flex flex-col gap-2 rounded-lg border bg-background/60 p-3 text-sm",
-        card.kind === "forecast"
-          ? "border-dashed border-primary/60"
-          : "border-border",
+        card.kind === "forecast" ? "border-primary/60" : "border-border",
         card.late && "border-destructive/60 bg-destructive/5"
       )}
     >
@@ -175,9 +173,7 @@ function BillCardView({
         <p className="min-w-0 flex-1 font-medium">{bill.personName}</p>
         <Badge
           variant="outline"
-          className={cn(
-            card.kind === "forecast" && "border-dashed border-primary"
-          )}
+          className={cn(card.kind === "forecast" && "border-primary")}
         >
           {KIND_LABEL[card.kind]}
         </Badge>
