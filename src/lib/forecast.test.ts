@@ -2379,15 +2379,14 @@ describe("the overview", () => {
     expect(Number(b.left) + Number(b.fromBank)).toBe(Number(b.payout))
   })
 
-  it("gives each month the same left before dividends as In and out", () => {
+  it("takes what the bank adds from the balance left after take-home", () => {
     const { r, buckets } = view()
-    const inOut = inOutMonths(r, formatMoney)
-    expect(buckets.length).toBeGreaterThan(0)
-    for (const b of buckets) {
-      const m = inOut.find((x) => x.month === b.month)!
-      expect(b.leftBeforeDividends).toBe(m.left)
-      expect(b.fromReserve).toBe(m.fromReserve)
-    }
+    buckets.forEach((b, i) =>
+      expect(Number(b.fromBank)).toBeCloseTo(
+        Number(r.months[i].opening) - Number(r.months[i].afterPayout),
+        2
+      )
+    )
   })
 
   it("lists earlier months from the bank, newest first", () => {

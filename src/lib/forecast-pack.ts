@@ -129,7 +129,7 @@ export function buildForecastPack(d: ForecastPackInput): string {
 
   const plain = (v: string) => v
   out.push(
-    "## Take-home by month\n\nEach month as a sum: money in, less money out, gives what's left from the month. Adding what comes from the bank (opening less closing balance; negative means kept in the bank) gives the payout, shared between the directors. The payout includes salary and dividends.\n\n" +
+    "## Take-home by month\n\nEach month as a sum: money in, less money out, gives what's left from the month. Adding what comes from the bank (opening balance less what's left after take-home; negative means kept in the bank) gives the payout, shared between the directors. The payout includes salary and dividends.\n\n" +
       overviewBuckets(result, plain)
         .map((b) =>
           [

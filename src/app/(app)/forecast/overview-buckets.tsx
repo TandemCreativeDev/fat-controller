@@ -199,11 +199,6 @@ export function OverviewBucketCard({ bucket }: { bucket: OverviewBucket }) {
       sum={bucket}
       top={headline}
     >
-      <Line
-        label="Left before dividends"
-        value={formatBalance(bucket.leftBeforeDividends)}
-      />
-      <ReserveNote fromReserve={bucket.fromReserve} />
       <Line label="Left from the month" value={formatBalance(bucket.left)} />
       <div className="hidden md:block">
         <Line label={bankLabel} value={bankAmount} />
@@ -214,8 +209,8 @@ export function OverviewBucketCard({ bucket }: { bucket: OverviewBucket }) {
           <span className={cn(figure, "text-foreground")}>{bankAmount}</span>
         </summary>
         <p className="pb-2 text-xs text-muted-foreground tabular-nums">
-          Starts with {formatBalance(bucket.opening)}, ends with{" "}
-          {formatBalance(bucket.closing)}
+          Starts with {formatBalance(bucket.opening)},{" "}
+          {formatBalance(bucket.afterPayout)} left after take-home
         </p>
       </details>
       <div className="hidden flex-col gap-2 md:flex">{headline}</div>
