@@ -269,6 +269,7 @@
   }
   [data-slot="table-cell"] {
     display: flex;
+    align-items: center;
     justify-content: space-between;
     gap: 1rem;
     padding: 0.25rem 0;

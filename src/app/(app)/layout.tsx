@@ -28,7 +28,7 @@ export default async function AppLayout({
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-screen-2xl flex-1 px-4 pt-4 pb-[calc(5rem+env(safe-area-inset-bottom))] md:px-6 md:pt-10 md:pb-16">
+      <main className="mx-auto w-full max-w-screen-2xl flex-1 px-4 pt-4 pb-[calc(9rem+env(safe-area-inset-bottom))] md:px-6 md:pt-10 md:pb-16">
         {children}
       </main>
       <BottomNav />
