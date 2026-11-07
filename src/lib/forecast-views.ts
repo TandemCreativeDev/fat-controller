@@ -308,7 +308,7 @@ function leftInBank(
       key: "set_asides",
       label: "Tax set-asides",
       amount: m.setAsideOwedAtPayout,
-      reason: "Not moved to the tax reserve yet.",
+      reason: "Moves to the tax reserve the day after the money lands.",
     },
     {
       key: "vat",
