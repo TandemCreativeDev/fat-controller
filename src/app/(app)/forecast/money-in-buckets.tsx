@@ -211,7 +211,7 @@ function IncludeBox({ row, month }: { row: MoneyInRow; month: string }) {
   const name = row.projectName ?? row.invoiceNumber ?? "this invoice"
   return (
     <Checkbox
-      aria-label={`Include ${name} in ${month} payout`}
+      aria-label={`Include ${name} in ${month} take-home`}
       checked={row.included}
       disabled={pending || row.amount === "0.00"}
       className="mt-0.5"

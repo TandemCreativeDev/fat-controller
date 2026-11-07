@@ -189,7 +189,7 @@ describe("buildForecastPack", () => {
       md.indexOf("## Projects")
     )
     expect(timeline).toContain("Running costs (monthly average)")
-    expect(timeline).toContain("Month-end payout to directors")
+    expect(timeline).toContain("Month-end take-home to directors")
     expect(timeline).toMatch(/lowest -?\d/)
   })
 

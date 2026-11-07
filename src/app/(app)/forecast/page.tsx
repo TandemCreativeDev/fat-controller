@@ -160,8 +160,8 @@ function BalanceCard({
         <CardTitle>Cash in the main account</CardTitle>
         <CardDescription>
           End-of-day balance: solid up to today, dashed for the forecast. It
-          should fall to about the buffer at each month-end payout; below zero
-          means a shortfall.
+          should fall to about the buffer at each month-end take-home; below
+          zero means a shortfall.
         </CardDescription>
       </CardHeader>
       <CardContent>

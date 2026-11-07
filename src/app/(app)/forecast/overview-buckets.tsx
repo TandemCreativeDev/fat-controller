@@ -195,7 +195,7 @@ export function OverviewBucketCard({ bucket }: { bucket: OverviewBucket }) {
   return (
     <MonthCard
       title={formatMonthName(bucket.month)}
-      note={`payout ${formatDayName(bucket.payoutDate)}`}
+      note={`take-home ${formatDayName(bucket.payoutDate)}`}
       sum={bucket}
       top={headline}
     >
@@ -229,7 +229,7 @@ export function OverviewBucketCard({ bucket }: { bucket: OverviewBucket }) {
         )}
       >
         <p className="flex items-baseline justify-between gap-2 text-sm font-semibold">
-          <span>Leave in the bank</span>
+          <span>Left in the bank after take-home</span>
           <span className={figure}>{formatBalance(bucket.afterPayout)}</span>
         </p>
         {bucket.leftInBank.map((r) => (
@@ -243,8 +243,8 @@ export function OverviewBucketCard({ bucket }: { bucket: OverviewBucket }) {
         ))}
         {bucket.afterPayout !== bucket.closing && (
           <p className="text-xs text-muted-foreground">
-            Ends the month at {formatBalance(bucket.closing)}, once anything due
-            after the payout has gone out.
+            Ends the month at {formatBalance(bucket.closing)}, after costs in
+            the last days of the month.
           </p>
         )}
       </section>
