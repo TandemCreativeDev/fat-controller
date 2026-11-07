@@ -4,6 +4,7 @@ import {
   billBuckets,
   contractorColour,
   earlierMonths,
+  holdBackWhy,
   inOutMonths,
   mergeDay,
   overviewBuckets,
@@ -37,6 +38,7 @@ import {
   timelineMonths,
   type CashLine,
   type ForecastInput,
+  type MonthBreakdown,
   type ForecastResult,
   type RawCashLine,
   type TimelineRow,
@@ -404,11 +406,49 @@ describe("hold-back and shortfall", () => {
     expect(june.holdBack).toBe("2900.00")
     expect(june.holdBackSource).toBe("suggested")
     expect(june.payout).toBe("2000.00")
-    expect(june.holdBackReason).toEqual({
-      personName: "Casey Contractor",
-      dueOn: "2026-07-26",
+    expect(june.holdBackReason).toMatchObject({
+      shortOn: "2026-07-26",
+      shortBy: "2900.00",
+      bills: [{ personName: "Casey Contractor", amount: "3000.00" }],
     })
     expect(june.shortfall).toBe("0.00")
+  })
+
+  it("explains everything the payout leaves in the bank", () => {
+    const r = run(tightInput())
+    const june = overviewBuckets(r, (v) => v)[0]
+    expect(june.leftInBank.map((x) => [x.key, x.amount])).toEqual([
+      ["hold_back", "2900.00"],
+      ["buffer", "100.00"],
+    ])
+    expect(june.closing).toBe("3000.00")
+    expect(june.leftInBank[0].reason).toContain(
+      "after paying Casey Contractor 3000.00"
+    )
+  })
+
+  it("says when the money runs short, why, and what lands too late", () => {
+    const base = run(tightInput()).months[0]
+    const reason = {
+      shortOn: "2026-07-29",
+      shortBy: "724.64",
+      bills: [
+        { personName: "Casey", amount: "873.81" },
+        { personName: "Sam", amount: "100.00" },
+      ],
+      nextInvoice: { name: "AAA-I4", landsOn: "2026-07-30" },
+    }
+    const why = (r: MonthBreakdown["holdBackReason"]) =>
+      holdBackWhy({ ...base, holdBackReason: r }, (v) => v)
+    expect(why(reason)).toBe(
+      "By Wed 29 Jul the account would be 724.64 short, after paying Casey 873.81, Sam 100.00. The next invoice, AAA-I4, doesn't land until Thu 30 Jul."
+    )
+    expect(why({ ...reason, bills: [] })).toContain(
+      "short, from running costs and set-asides."
+    )
+    expect(why({ ...reason, nextInvoice: null })).toContain(
+      "No invoice is forecast to land in time."
+    )
   })
 
   it("lets a director's choice replace the suggestion", () => {

@@ -552,7 +552,20 @@ export type MonthBreakdown = {
   holdBack: string
   holdBackSource: "suggested" | "director" | "none"
   suggestedHoldBack: string
-  holdBackReason: { personName: string; dueOn: string } | null
+  holdBackReason: {
+    /** The worst day next month, if nothing were held back. */
+    shortOn: string
+    shortBy: string
+    /** Bills paid next month up to that day, added up per person. */
+    bills: { personName: string; amount: string }[]
+    /** The first invoice to land after that day, if any is forecast. */
+    nextInvoice: { name: string; landsOn: string } | null
+  } | null
+  /** What's in the account straight after the payout. */
+  afterPayout: string
+  /** Set-asides and VAT still owed when the payout is worked out. */
+  setAsideOwedAtPayout: string
+  vatOwedAtPayout: string
   /** What the hold-back leaves uncovered next month, for the backstop warning. */
   shortfall: string
   payout: string
@@ -637,6 +650,8 @@ export type ForecastResult =
       warnings: ForecastWarning[]
       runningCostAverage: string
       runningCosts: RunningCostTally
+      /** Left in the main account each month. */
+      buffer: string
       taxReserveBalance: string | null
       directorCount: number
       /** Salaries a month, all directors together. */
@@ -1527,14 +1542,14 @@ function shortfallIn(
   prepared: Prepared,
   sim: SimResult,
   month: string
-): { amount: Dec; bill: SimBill | null } {
+): { amount: Dec; day: string | null } {
   const next = addMonths(month, 1)
   const end = monthEnd(next)
   const due = prepared.bills.filter((b) => {
     const when = b.plannedPayOn ?? b.dueOn
     return when >= next && when <= end
   })
-  if (due.length === 0) return { amount: ZERO, bill: null }
+  if (due.length === 0) return { amount: ZERO, day: null }
   const lastDue = due.reduce((m, b) => {
     const when = b.plannedPayOn ?? b.dueOn
     return when > m ? when : m
@@ -1548,13 +1563,43 @@ function shortfallIn(
       worstDay = d
     }
   }
-  if (!worstDay) return { amount: ZERO, bill: null }
-  const onOrBefore = due
-    .filter((b) => (b.plannedPayOn ?? b.dueOn) <= worstDay!)
-    .sort((a, b) =>
-      (b.plannedPayOn ?? b.dueOn).localeCompare(a.plannedPayOn ?? a.dueOn)
+  if (!worstDay) return { amount: ZERO, day: null }
+  return { amount: worst, day: worstDay }
+}
+
+/** Bills paid between two days, in the order they went out, added up per person. */
+function billsPaidBetween(
+  sim: SimResult,
+  from: string,
+  to: string
+): { personName: string; amount: string }[] {
+  const byPerson = new Map<string, Dec>()
+  const paid = [...sim.paidOn.entries()]
+    .filter(([, on]) => on >= from && on <= to)
+    .sort((a, b) => a[1].localeCompare(b[1]))
+  for (const [bill] of paid)
+    byPerson.set(
+      bill.personName,
+      (byPerson.get(bill.personName) ?? ZERO).plus(bill.amount)
     )
-  return { amount: worst, bill: onOrBefore[0] ?? due[0] }
+  return [...byPerson.entries()].map(([personName, amount]) => ({
+    personName,
+    amount: money(amount),
+  }))
+}
+
+/** The first invoice to land after a day, with its name but not its label. */
+function nextInvoiceAfter(
+  sim: SimResult,
+  day: string | null
+): { name: string; landsOn: string } | null {
+  if (!day) return null
+  const hit = sim.events
+    .filter((e) => e.type === "expected_invoice" && e.date > day)
+    .sort((a, b) => a.date.localeCompare(b.date))[0]
+  return hit
+    ? { name: hit.label.replace(/^[^:]*: /, ""), landsOn: hit.date }
+    : null
 }
 
 /** A director's date wins, but money can't land in the past. */
@@ -2234,6 +2279,9 @@ function monthRows(
   | "holdBackSource"
   | "suggestedHoldBack"
   | "holdBackReason"
+  | "afterPayout"
+  | "setAsideOwedAtPayout"
+  | "vatOwedAtPayout"
   | "shortfall"
 > {
   const end = monthEnd(month)
@@ -2381,7 +2429,10 @@ export function runForecast(input: ForecastInput): ForecastResult {
 
   // Hold-backs depend on earlier months, so settle them one month at a time.
   const holdBacks = new Map<string, Dec>()
-  const suggestions = new Map<string, { amount: Dec; bill: SimBill | null }>()
+  const suggestions = new Map<
+    string,
+    { amount: Dec; reason: MonthBreakdown["holdBackReason"] }
+  >()
   for (const month of displayMonths) {
     const trial = new Map(holdBacks)
     trial.set(month, ZERO)
@@ -2389,7 +2440,17 @@ export function runForecast(input: ForecastInput): ForecastResult {
     const short = shortfallIn(prepared, sim, month)
     const canHold = sim.payouts.has(month)
     const amount = canHold ? penny(short.amount) : ZERO
-    suggestions.set(month, { amount, bill: short.bill })
+    suggestions.set(month, {
+      amount,
+      reason: short.day
+        ? {
+            shortOn: short.day,
+            shortBy: money(penny(short.amount)),
+            bills: billsPaidBetween(sim, addMonths(month, 1), short.day),
+            nextInvoice: nextInvoiceAfter(sim, short.day),
+          }
+        : null,
+    })
     holdBacks.set(month, directorChoice.get(month) ?? amount)
   }
   const sim = simulate(input, prepared, opening, holdBacks)
@@ -2408,12 +2469,14 @@ export function runForecast(input: ForecastInput): ForecastResult {
       holdBack: money(held),
       holdBackSource: chosen ? "director" : held.gt(0) ? "suggested" : "none",
       suggestedHoldBack: money(suggestion.amount),
-      holdBackReason: suggestion.bill
-        ? {
-            personName: suggestion.bill.personName,
-            dueOn: suggestion.bill.plannedPayOn ?? suggestion.bill.dueOn,
-          }
-        : null,
+      holdBackReason: suggestion.reason,
+      afterPayout: money(
+        (sim.endOfDay.get(rows.payoutDate) ?? ZERO).minus(
+          sim.payouts.get(month) ?? ZERO
+        )
+      ),
+      setAsideOwedAtPayout: money(prepared.setAsideOwedOn(rows.payoutDate)),
+      vatOwedAtPayout: money(prepared.vatOwedOn(rows.payoutDate)),
       shortfall: money(penny(after.amount)),
     })
   }
@@ -2444,6 +2507,7 @@ export function runForecast(input: ForecastInput): ForecastResult {
     warnings,
     runningCostAverage: money(runningCostAverage(input)),
     runningCosts: runningCostTally(input, months),
+    buffer: money(settings.bufferGbp),
     taxReserveBalance: input.taxReserveBalance,
     directorCount: directorCount(input),
     salaryPerMonth: money(

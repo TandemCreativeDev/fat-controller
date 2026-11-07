@@ -10,6 +10,7 @@ import {
 import { payoutBuckets } from "@/lib/forecast-buckets"
 import {
   billBuckets,
+  holdBackWhy,
   inOutMonths,
   overviewBuckets,
   timelineView,
@@ -147,19 +148,16 @@ export function buildForecastPack(d: ForecastPackInput): string {
                 ["Result", "Take-home per director", b.takeHome],
                 ["Result", "Take-home is made of", b.takeHomeNote],
                 ["Result", "Leaves in the bank", b.closing],
-                ...(b.holdBack
-                  ? [
-                      [
-                        "Result",
-                        `Held back${b.holdBack.personName ? ` for ${b.holdBack.personName}'s bill due ${b.holdBack.dueOn}` : ""}`,
-                        b.holdBack.amount,
-                      ],
-                    ]
-                  : []),
+                ...(b.holdBack ? [["Result", "Held back", b.holdBack]] : []),
                 ...(b.shortfall
                   ? [["Result", "Short next month", b.shortfall]]
                   : []),
                 ...(b.vatOwed ? [["Result", "VAT owed", b.vatOwed]] : []),
+                ...b.leftInBank.map((r) => [
+                  "Left in the bank",
+                  `${r.label}${r.reason ? `: ${r.reason}` : ""}`,
+                  r.amount,
+                ]),
               ]
             ),
           ].join("\n")
@@ -200,21 +198,13 @@ export function buildForecastPack(d: ForecastPackInput): string {
       (reasons.length === 0
         ? "None suggested."
         : markdownTable(
-            [
-              "Month",
-              "Amount",
-              "Set by",
-              "Suggested",
-              "Protects the bill of",
-              "Due",
-            ],
+            ["Month", "Amount", "Set by", "Suggested", "Why"],
             reasons.map((m) => [
               m.month.slice(0, 7),
               m.holdBack,
               m.holdBackSource,
               m.suggestedHoldBack,
-              m.holdBackReason!.personName,
-              m.holdBackReason!.dueOn,
+              holdBackWhy(m, plain),
             ])
           ))
   )

@@ -287,9 +287,6 @@ function InvoiceCard({
         <IncludeBox row={row} month={month} />
         <div className="min-w-0 flex-1">
           <p className="font-medium max-md:line-clamp-2">{invoice.title}</p>
-          <div className="mt-1">
-            <StatusPill invoice={invoice} />
-          </div>
         </div>
         <p
           className={cn(
@@ -299,6 +296,9 @@ function InvoiceCard({
         >
           {formatMoney(row.amount)}
         </p>
+      </div>
+      <div>
+        <StatusPill invoice={invoice} />
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Badge

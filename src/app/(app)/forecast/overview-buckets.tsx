@@ -6,7 +6,6 @@ import type { InOutMonth, MonthSum, OverviewBucket } from "@/lib/forecast-views"
 import {
   formatBalance,
   formatDayName,
-  formatDayShort,
   formatMoney,
   formatMonth,
   formatMonthName,
@@ -220,27 +219,41 @@ export function OverviewBucketCard({ bucket }: { bucket: OverviewBucket }) {
         </p>
       </details>
       <div className="hidden flex-col gap-2 md:flex">{headline}</div>
-      <p className="text-xs text-muted-foreground">
-        Leaves {formatBalance(bucket.closing)} in the bank
-        {bucket.holdBack &&
-          `, including ${formatMoney(bucket.holdBack.amount)} held${
-            bucket.holdBack.personName
-              ? ` for ${bucket.holdBack.personName}'s bill due ${formatDayShort(bucket.holdBack.dueOn)}`
-              : ""
-          }`}
-        .
-      </p>
+      <section
+        aria-label={`Left in the bank, ${formatMonthName(bucket.month)}`}
+        className={cn(
+          "flex flex-col gap-2 rounded-md border p-3",
+          bucket.holdBack
+            ? "border-amber-400/60 bg-amber-400/10"
+            : "border-border"
+        )}
+      >
+        <p className="flex items-baseline justify-between gap-2 text-sm font-semibold">
+          <span>Leave in the bank</span>
+          <span className={figure}>{formatBalance(bucket.afterPayout)}</span>
+        </p>
+        {bucket.leftInBank.map((r) => (
+          <div key={r.key} className="flex flex-col gap-0.5 text-xs">
+            <p className="flex items-baseline justify-between gap-2 font-medium">
+              <span>{r.label}</span>
+              <span className={figure}>{formatMoney(r.amount)}</span>
+            </p>
+            {r.reason && <p className="text-muted-foreground">{r.reason}</p>}
+          </div>
+        ))}
+        {bucket.afterPayout !== bucket.closing && (
+          <p className="text-xs text-muted-foreground">
+            Ends the month at {formatBalance(bucket.closing)}, once anything due
+            after the payout has gone out.
+          </p>
+        )}
+      </section>
       {bucket.shortfall && (
         <p className="text-xs font-medium text-destructive">
           {formatMoney(bucket.shortfall)} short next month
           {bucket.taxReserve &&
             `, with ${formatMoney(bucket.taxReserve)} in the tax reserve`}
           .
-        </p>
-      )}
-      {bucket.vatOwed && (
-        <p className="text-xs text-muted-foreground">
-          {formatMoney(bucket.vatOwed)} VAT owed is kept out of the payout.
         </p>
       )}
     </MonthCard>

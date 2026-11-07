@@ -9,7 +9,9 @@ import {
   type Source,
   type TimelineCategory,
   type TimelineRow,
+  type MonthBreakdown,
 } from "@/lib/forecast"
+import { formatDayName } from "@/lib/format"
 import {
   clientAnchor,
   payoutBuckets,
@@ -250,11 +252,85 @@ export type OverviewBucket = MonthSum & {
   /** All directors together. */
   payout: string
   closing: string
-  holdBack: { amount: string; personName: string; dueOn: string } | null
+  holdBack: string | null
+  /** What's in the account straight after the payout. */
+  afterPayout: string
+  /** What the payout leaves behind and why. Empty when there's no payout to explain. */
+  leftInBank: LeftInBank[]
   /** What the hold-back leaves uncovered next month, if anything. */
   shortfall: string | null
   taxReserve: string | null
   vatOwed: string | null
+}
+
+export type LeftInBank = {
+  key: "hold_back" | "set_asides" | "vat" | "buffer"
+  label: string
+  amount: string
+  reason: string
+}
+
+/** Why a hold-back is there, in words: when the money runs short, and what's behind it. */
+export function holdBackWhy(
+  m: MonthBreakdown,
+  formatMoney: (amount: string) => string
+): string {
+  const r = m.holdBackReason
+  const chosen =
+    m.holdBackSource === "director" ? " A director set this amount." : ""
+  if (!r) return chosen.trim()
+  const paying = r.bills
+    .map((b) => `${b.personName} ${formatMoney(b.amount)}`)
+    .join(", ")
+  const short = `By ${formatDayName(r.shortOn)} the account would be ${formatMoney(r.shortBy)} short${
+    paying ? `, after paying ${paying}` : ", from running costs and set-asides"
+  }.`
+  const next = r.nextInvoice
+    ? ` The next invoice, ${r.nextInvoice.name}, doesn't land until ${formatDayName(r.nextInvoice.landsOn)}.`
+    : " No invoice is forecast to land in time."
+  return `${short}${next}${chosen}`
+}
+
+function leftInBank(
+  result: Ready,
+  m: MonthBreakdown,
+  formatMoney: (amount: string) => string
+): LeftInBank[] {
+  if (new D(m.payout).lte(0)) return []
+  const rows: LeftInBank[] = [
+    {
+      key: "hold_back",
+      label: "Held for next month",
+      amount: m.holdBack,
+      reason: holdBackWhy(m, formatMoney),
+    },
+    {
+      key: "set_asides",
+      label: "Tax set-asides",
+      amount: m.setAsideOwedAtPayout,
+      reason: "Not moved to the tax reserve yet.",
+    },
+    {
+      key: "vat",
+      label: "VAT",
+      amount: m.vatOwedAtPayout,
+      reason: "Owed to HMRC.",
+    },
+    {
+      key: "buffer",
+      label: "Buffer",
+      amount: result.buffer,
+      reason: "Always left in the account.",
+    },
+  ]
+  const shown = rows.filter((r) => new D(r.amount).gt(0))
+  // Only explain what adds up: anything else would be a made-up reason.
+  return sum(shown.map((r) => new D(r.amount)))
+    .minus(m.afterPayout)
+    .abs()
+    .lte(0.01)
+    ? shown
+    : []
 }
 
 export function overviewBuckets(
@@ -343,13 +419,9 @@ export function overviewBuckets(
       takeHomeNote: takeHomeNote(result, m.takeHomePerDirector, formatMoney),
       payout: money(new D(m.directorPay).abs()),
       closing: m.closing,
-      holdBack: new D(m.holdBack).gt(0)
-        ? {
-            amount: m.holdBack,
-            personName: m.holdBackReason?.personName ?? "",
-            dueOn: m.holdBackReason?.dueOn ?? "",
-          }
-        : null,
+      holdBack: new D(m.holdBack).gt(0) ? m.holdBack : null,
+      afterPayout: m.afterPayout,
+      leftInBank: leftInBank(result, m, formatMoney),
       shortfall: new D(m.shortfall).gt(0) ? m.shortfall : null,
       taxReserve: result.taxReserveBalance,
       vatOwed: new D(m.vatOwed).isZero() ? null : m.vatOwed,
