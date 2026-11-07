@@ -2987,3 +2987,31 @@ describe("billing runs", () => {
     expect(runs.map(keys)).toEqual([["a"], ["b"]])
   })
 })
+
+describe("set-aside timing", () => {
+  it("moves a set-aside the same day its invoice lands", () => {
+    const r = run(baseInput())
+    const landed = r.timeline.filter(
+      (e) => e.type === "expected_invoice" && e.date > r.today
+    )
+    const moved = r.timeline.filter(
+      (e) => e.type === "set_aside" && e.date > r.today
+    )
+    expect(landed.length).toBeGreaterThan(0)
+    expect(moved.length).toBeGreaterThan(0)
+    const landedOn = new Set(landed.map((e) => e.date))
+    for (const e of moved) expect(landedOn.has(e.date)).toBe(true)
+  })
+
+  it("leaves nothing owed on the day it lands, and takes it before bills", () => {
+    const r = run(baseInput())
+    const day = r.timeline.find(
+      (e) => e.type === "set_aside" && e.date > r.today
+    )!.date
+    const types = r.timeline.filter((e) => e.date === day).map((e) => e.type)
+    expect(types.indexOf("expected_invoice")).toBeLessThan(
+      types.indexOf("set_aside")
+    )
+    expect(r.months.every((m) => m.setAsideOwedAtPayout === "0.00")).toBe(true)
+  })
+})

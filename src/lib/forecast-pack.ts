@@ -105,7 +105,7 @@ export function buildForecastPack(d: ForecastPackInput): string {
       `- **Forecast days:** tracked time so far, plus each person's average daily rate on that project over the last ${settings.lookbackDays} days, for the working days left in the period.`,
       "- **Money in:** an invoice lands on its due date. An overdue unpaid invoice is assumed to land today, which may be optimistic.",
       "- **Contractor bills:** issued on the last Friday of the month, for work up to the cut-off before it, and paid from the following month's money as soon as the balance covers them, no later than the due date.",
-      `- **Set-aside:** ${percent(settings.ctSetAsideRate)} × (invoice before VAT − contractor cost of that work), moved to the tax reserve the day after each client payment.`,
+      `- **Set-aside:** ${percent(settings.ctSetAsideRate)} × (invoice before VAT − contractor cost of that work), moved to the tax reserve the same day each client payment lands.`,
       `- **Take-home:** on the last working day of each month the main account is emptied into a director payout, split equally, apart from a £${settings.bufferGbp} buffer, VAT owed, set-asides not yet moved, and any hold-back.`,
       "- **Hold-back:** kept from a month's payout when next month's contractor bills couldn't otherwise be paid by their due dates.",
       `- **VAT:** ${settings.vatRegisteredFrom ? `registered from ${settings.vatRegisteredFrom}, at ${percent(settings.vatRate)}.` : "not registered."}`,

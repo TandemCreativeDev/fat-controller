@@ -1807,12 +1807,11 @@ function prepare(
     credit = credit.minus(settled)
     const remaining = o.amount.minus(settled)
     if (remaining.lte(0)) continue
-    const next = addDays(o.date, 1)
+    // A set-aside moves the moment the money lands; a repayment waits for payout day.
+    const landed = o.date > today ? o.date : today
     const moveOn = o.repayment
-      ? lastWorkingDay(o.date > today ? o.date : today, new Set(input.holidays))
-      : next > today
-        ? next
-        : today
+      ? lastWorkingDay(landed, new Set(input.holidays))
+      : landed
     scheduled.push({ owedOn: o.date, moveOn, amount: remaining })
     if (moveOn <= lastDay)
       events.push({
