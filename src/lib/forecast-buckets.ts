@@ -59,6 +59,8 @@ export type ClientGroup = {
   /** Included invoices only. */
   total: string
   each: string
+  /** Days invoiced or forecast on included invoices, across all the client's projects. */
+  days: string
 }
 
 /** One client's part of a month's money in, for the split bar and its legend. */
@@ -73,6 +75,8 @@ export type BucketSegment = {
   /** The chart colour slot, fixed per client across months. Null is neutral. */
   colorSlot: number | null
   colour: string
+  /** Days on the included invoices. Blank where there are no invoices to count. */
+  days?: string
 }
 
 export type PayoutBucket = {
@@ -229,6 +233,7 @@ function buildBucket(
         runs: groupInvoicesIntoRuns(list),
         total: money(addAmounts(counted)),
         each: money(addEach(counted)),
+        days: days(sum(counted.map((i) => new D(i.row.totalDays))).toFixed(4)),
       }
     })
     // Ticking an invoice must not reorder anything, so left-out ones count here too.
@@ -272,7 +277,8 @@ function segmentsFor(
     key: string,
     label: string,
     amount: Dec,
-    colorSlot: number | null
+    colorSlot: number | null,
+    dayCount?: string
   ): BucketSegment => {
     // Nothing ticked means an empty bar and 0% all round, not a division by zero.
     const share = total.isZero() ? ZERO : amount.div(total).times(100)
@@ -284,13 +290,14 @@ function segmentsFor(
       percentLabel: share.toDecimalPlaces(0).toNumber(),
       colorSlot,
       colour: seriesColour(colorSlot),
+      days: dayCount,
     }
   }
   // Every client stays, in the order of the groups below, whatever's ticked.
   const named = bucket.clients
     .filter((c) => slots.has(c.client))
     .map((c) =>
-      segment(c.client, c.client, new D(c.total), slots.get(c.client)!)
+      segment(c.client, c.client, new D(c.total), slots.get(c.client)!, c.days)
     )
   const unnamed = bucket.clients.filter((c) => !slots.has(c.client))
   const received = new D(bucket.received)
@@ -302,7 +309,16 @@ function segmentsFor(
             "other",
             "Other clients",
             sum(unnamed.map((c) => new D(c.total))),
-            null
+            null,
+            days(
+              sum(
+                unnamed.flatMap((c) =>
+                  c.invoices
+                    .filter((i) => i.row.included)
+                    .map((i) => new D(i.row.totalDays))
+                )
+              ).toFixed(4)
+            )
           ),
         ]
       : []),

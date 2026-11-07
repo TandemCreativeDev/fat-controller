@@ -3015,3 +3015,36 @@ describe("set-aside timing", () => {
     expect(r.months.every((m) => m.setAsideOwedAtPayout === "0.00")).toBe(true)
   })
 })
+
+describe("days per client", () => {
+  it("adds up the days on ticked invoices, across a client's projects", () => {
+    const { months } = payoutBuckets(run(baseInput()), formatMoney)
+    const client = months
+      .flatMap((b) => b.clients)
+      .find((c) => c.invoices.some((i) => Number(i.row.totalDays) > 0))!
+    const expected = client.invoices
+      .filter((i) => i.row.included)
+      .reduce((t, i) => t + Number(i.row.totalDays), 0)
+    expect(Number(client.days)).toBeCloseTo(expected, 2)
+  })
+
+  it("counts nothing for a left-out invoice", () => {
+    const first = payoutBuckets(run(baseInput()), formatMoney)
+      .months.flatMap((b) => b.clients)
+      .find((c) => c.invoices.length === 1 && Number(c.days) > 0)!
+    const key = first.invoices[0].row.key
+    const after = payoutBuckets(
+      run(
+        baseInput({
+          expectations: [
+            { invoiceKey: key, excluded: true, expectedOn: null, note: null },
+          ],
+        })
+      ),
+      formatMoney
+    )
+      .months.flatMap((b) => b.clients)
+      .find((c) => c.invoices.some((i) => i.row.key === key))!
+    expect(Number(after.days)).toBe(0)
+  })
+})

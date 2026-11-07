@@ -272,9 +272,10 @@ export function buildForecastPack(d: ForecastPackInput): string {
       `- **Left out:** ${b.leftOut ? `${b.leftOut.count} invoices, worth ${b.leftOut.worth} (${b.leftOut.each} per director)` : "nothing"}`,
       "",
       markdownTable(
-        ["Client", "Amount", "Share %", "Per director"],
+        ["Client", "Days", "Amount", "Share %", "Per director"],
         b.segments.map((seg) => [
           seg.label,
+          seg.days ?? null,
           seg.amount,
           seg.percentLabel,
           b.clients.find((c) => c.client === seg.label)?.each ?? "",

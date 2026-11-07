@@ -7,6 +7,8 @@ export type SplitPart = {
   percent: number
   percentLabel: number
   colour: string
+  /** Days behind this part, where that means something. */
+  days?: string
 }
 
 /** A thin bar split into parts. The track stays when every part is 0, so nothing moves. */
@@ -57,7 +59,14 @@ export function SplitLegend({
       {parts.map((p) => (
         <li key={p.key} className="flex items-baseline gap-2">
           <Dot colour={p.colour} className="self-center" />
-          <span className="min-w-0 flex-1">{p.label}</span>
+          <span className="min-w-0 flex-1 truncate" title={p.label}>
+            {p.label}
+          </span>
+          {parts.some((x) => x.days !== undefined) && (
+            <span className="w-12 shrink-0 text-right text-muted-foreground tabular-nums">
+              {p.days !== undefined && `${p.days}d`}
+            </span>
+          )}
           <span className="w-20 shrink-0 text-right font-medium tabular-nums">
             {amount(p.amount)}
           </span>
