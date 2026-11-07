@@ -143,39 +143,35 @@ function Line({ label, value }: { label: string; value: string }) {
   )
 }
 
+/** Money moved back from the tax reserve helped pay the bills, but it isn't income. */
+function ReserveNote({ fromReserve }: { fromReserve: string }) {
+  if (Number(fromReserve) <= 0) return null
+  return (
+    <p className="text-xs text-muted-foreground">
+      Left before dividends doesn&apos;t count the {formatMoney(fromReserve)}{" "}
+      moved back from the tax reserve.
+    </p>
+  )
+}
+
 function Headline({
   label,
   sub,
   value,
-  negative = false,
 }: {
   label: string
   sub?: string
   value: string
-  negative?: boolean
 }) {
   return (
     <div className="mt-1 flex flex-wrap items-end justify-between gap-x-3">
       <div>
-        <p
-          className={cn(
-            "text-xs font-semibold tracking-[0.08em] uppercase",
-            negative ? "text-destructive" : "text-success"
-          )}
-        >
+        <p className="text-xs font-semibold tracking-[0.08em] text-success uppercase">
           {label}
         </p>
         {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
       </div>
-      <p
-        className={cn(
-          figure,
-          "text-3xl font-medium",
-          negative ? "text-destructive" : "text-success"
-        )}
-      >
-        {value}
-      </p>
+      <p className={cn(figure, "text-3xl font-medium text-success")}>{value}</p>
     </div>
   )
 }
@@ -204,6 +200,11 @@ export function OverviewBucketCard({ bucket }: { bucket: OverviewBucket }) {
       sum={bucket}
       top={headline}
     >
+      <Line
+        label="Left before dividends"
+        value={formatBalance(bucket.leftBeforeDividends)}
+      />
+      <ReserveNote fromReserve={bucket.fromReserve} />
       <Line label="Left from the month" value={formatBalance(bucket.left)} />
       <div className="hidden md:block">
         <Line label={bankLabel} value={bankAmount} />
@@ -246,33 +247,15 @@ export function OverviewBucketCard({ bucket }: { bucket: OverviewBucket }) {
   )
 }
 
-const BASIS = {
-  actual: "from the bank",
-  current: "bank so far + forecast",
-  forecast: "forecast",
-}
-
-/** One month's money in and out, before dividends. */
-export function InOutMonthCard({ month }: { month: InOutMonth }) {
-  const negative = Number(month.left) < 0
+/** A past month from the bank: just what came in, went out and was left. */
+export function EarlierMonthCard({ month }: { month: InOutMonth }) {
   return (
-    <MonthCard
-      title={formatMonth(month.month)}
-      note={BASIS[month.basis]}
-      sum={month}
-    >
-      <Headline
-        label="Left"
-        sub="before dividends"
-        value={formatBalance(month.left)}
-        negative={negative}
-      />
-      {Number(month.fromReserve) > 0 && (
-        <p className="text-xs text-muted-foreground">
-          Also {formatMoney(month.fromReserve)} moved back from the tax reserve,
-          which isn&apos;t counted above.
-        </p>
-      )}
-    </MonthCard>
+    <article className="flex min-w-0 flex-col gap-1.5 rounded-lg border border-border bg-muted/40 p-3">
+      <h3 className="text-sm font-semibold">{formatMonth(month.month)}</h3>
+      <Line label="Money in" value={formatMoney(month.moneyInTotal)} />
+      <Line label="Money out" value={formatMoney(month.moneyOutTotal)} />
+      <Line label="Left before dividends" value={formatBalance(month.left)} />
+      <ReserveNote fromReserve={month.fromReserve} />
+    </article>
   )
 }

@@ -227,6 +227,10 @@ export default async function HomePage({
       <Card>
         <CardHeader>
           <CardTitle>By month</CardTitle>
+          <CardDescription>
+            By invoice date: sales and costs count in the month they were
+            invoiced or billed.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>

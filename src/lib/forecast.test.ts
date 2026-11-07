@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   billBuckets,
   contractorColour,
+  earlierMonths,
   inOutMonths,
   mergeDay,
   overviewBuckets,
@@ -10,6 +11,7 @@ import {
 } from "./forecast-views"
 import {
   invoiceDetail,
+  groupInvoicesIntoRuns,
   invoiceShare,
   payoutBuckets,
   takeHomeNote,
@@ -2336,6 +2338,28 @@ describe("the overview", () => {
     expect(Number(b.left) + Number(b.fromBank)).toBe(Number(b.payout))
   })
 
+  it("gives each month the same left before dividends as In and out", () => {
+    const { r, buckets } = view()
+    const inOut = inOutMonths(r, formatMoney)
+    expect(buckets.length).toBeGreaterThan(0)
+    for (const b of buckets) {
+      const m = inOut.find((x) => x.month === b.month)!
+      expect(b.leftBeforeDividends).toBe(m.left)
+      expect(b.fromReserve).toBe(m.fromReserve)
+    }
+  })
+
+  it("lists earlier months from the bank, newest first", () => {
+    const history = [
+      { ...cost("2026-03-10", "10.00"), sourceId: "a" },
+      { ...cost("2026-05-10", "20.00"), sourceId: "b" },
+    ]
+    const r = run(baseInput({ cash: history }))
+    const months = earlierMonths(r, formatMoney).map((m) => m.month)
+    expect(months).toEqual(["2026-05-01", "2026-03-01"])
+    expect(months).not.toContain(r.months[0].month)
+  })
+
   it("only lists rows that have an amount", () => {
     const b = view().buckets[0]
     expect(b.moneyOut.map((r) => r.label)).toEqual([
@@ -2820,5 +2844,66 @@ describe("bill kinds", () => {
     expect(kindOf("2026-05-20", null)).toBe("calculated")
     expect(kindOf("2026-06-20", null)).toBe("forecast")
     expect(kindOf("2026-05-20", "stored")).toBe("entered")
+  })
+})
+
+describe("billing runs", () => {
+  const invoice = (
+    key: string,
+    dueOn: string,
+    invoiceDate: string,
+    amount: string,
+    included = true
+  ) =>
+    ({
+      dueOn,
+      row: { key, invoiceDate, amount, included },
+    }) as unknown as Parameters<typeof groupInvoicesIntoRuns>[0][number]
+  const keys = (run: { invoices: { row: { key: string } }[] }) =>
+    run.invoices.map((i) => i.row.key)
+
+  it("groups by due date and raise date, earliest due first", () => {
+    const runs = groupInvoicesIntoRuns([
+      invoice("late", "2026-07-10", "2026-06-10", "1.00"),
+      invoice("big", "2026-06-20", "2026-05-20", "900.00"),
+      invoice("small", "2026-06-20", "2026-05-20", "5.00"),
+      invoice("other-raise", "2026-06-20", "2026-05-25", "2.00"),
+    ])
+    expect(runs.map(keys)).toEqual([
+      ["big", "small"],
+      ["other-raise"],
+      ["late"],
+    ])
+    expect(runs[0]).toMatchObject({
+      dueDate: "2026-06-20",
+      raiseDate: "2026-05-20",
+      total: "905.00",
+    })
+  })
+
+  it("keeps the invoices in a run in their original order", () => {
+    const [run] = groupInvoicesIntoRuns([
+      invoice("small", "2026-06-20", "2026-05-20", "5.00"),
+      invoice("big", "2026-06-20", "2026-05-20", "900.00"),
+    ])
+    expect(keys(run)).toEqual(["small", "big"])
+  })
+
+  it("totals ticked invoices only, and keeps a run when nothing is ticked", () => {
+    const runs = groupInvoicesIntoRuns([
+      invoice("a", "2026-06-20", "2026-05-20", "10.00", false),
+      invoice("b", "2026-06-20", "2026-05-20", "4.50"),
+      invoice("c", "2026-07-20", "2026-06-20", "8.00", false),
+    ])
+    expect(runs.map((r) => r.total)).toEqual(["4.50", "0.00"])
+    expect(keys(runs[1])).toEqual(["c"])
+  })
+
+  it("moves an invoice to another run when its due date changes", () => {
+    const runs = groupInvoicesIntoRuns([
+      invoice("a", "2026-06-20", "2026-05-20", "1.00"),
+      invoice("b", "2026-06-27", "2026-05-20", "1.00"),
+    ])
+    expect(runs.map(keys)).toEqual([["a"], ["b"]])
   })
 })

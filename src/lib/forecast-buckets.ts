@@ -40,11 +40,22 @@ export type BucketInvoice = {
   detail: string
 }
 
+/** Invoices from one billing run: the same due date and the same raise date. */
+export type InvoiceRun = {
+  dueDate: string
+  raiseDate: string
+  invoices: BucketInvoice[]
+  /** What the ticked invoices add up to; left-out ones count for nothing. */
+  total: string
+}
+
 export type ClientGroup = {
   client: string
   /** The same colour as this client's part of the bar, on every tab. */
   colour: string
   invoices: BucketInvoice[]
+  /** The same invoices, by billing run. */
+  runs: InvoiceRun[]
   /** Included invoices only. */
   total: string
   each: string
@@ -147,6 +158,29 @@ export function invoiceDetail(
   return `${basis}${set} · ${costSuffix}`
 }
 
+/** Earliest due date first. Invoices inside a run stay in the order they came. */
+export function groupInvoicesIntoRuns(invoices: BucketInvoice[]): InvoiceRun[] {
+  const runs = new Map<string, BucketInvoice[]>()
+  for (const invoice of invoices) {
+    const key = `${invoice.dueOn}|${invoice.row.invoiceDate}`
+    runs.set(key, [...(runs.get(key) ?? []), invoice])
+  }
+  return [...runs.values()]
+    .map((list) => ({
+      dueDate: list[0].dueOn,
+      raiseDate: list[0].row.invoiceDate,
+      invoices: list,
+      total: money(
+        sum(list.filter((i) => i.row.included).map((i) => new D(i.row.amount)))
+      ),
+    }))
+    .sort(
+      (a, b) =>
+        a.dueDate.localeCompare(b.dueDate) ||
+        a.raiseDate.localeCompare(b.raiseDate)
+    )
+}
+
 function buildBucket(
   month: string | null,
   payoutDate: string | null,
@@ -192,6 +226,7 @@ function buildBucket(
         client,
         colour: NEUTRAL_COLOUR,
         invoices: [...list].sort((a, b) => a.dueOn.localeCompare(b.dueOn)),
+        runs: groupInvoicesIntoRuns(list),
         total: money(addAmounts(counted)),
         each: money(addEach(counted)),
       }

@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { redirect } from "next/navigation"
 
 import { ActionForm } from "@/components/action-form"
 import { BalanceLine, MonthlyBars } from "@/components/charts"
@@ -33,7 +34,7 @@ import { accuracySummary, breakdownText, forecastCharts } from "@/lib/forecast"
 import { payoutBuckets } from "@/lib/forecast-buckets"
 import {
   billBuckets,
-  inOutMonths,
+  earlierMonths,
   overviewBuckets,
   timelineView,
 } from "@/lib/forecast-views"
@@ -48,8 +49,8 @@ import {
 import { requireDirector } from "@/lib/session"
 import { clearManualBalance, saveManualBalance } from "./actions"
 import { BillsBuckets } from "./bills-buckets"
-import { AdjustmentsTable, HoldBacksTable } from "./cash-tables"
-import { InOutMonthCard, OverviewBucketCard } from "./overview-buckets"
+import { AdjustmentsTable } from "./cash-tables"
+import { EarlierMonthCard, OverviewBucketCard } from "./overview-buckets"
 import { CopyButton } from "./copy-button"
 import { MoneyInBuckets } from "./money-in-buckets"
 import { RunningCosts } from "./running-costs"
@@ -57,7 +58,6 @@ import { Timeline } from "./timeline"
 
 const TABS = [
   { key: "overview", label: "Overview" },
-  { key: "in-out", label: "In and out" },
   { key: "money-in", label: "Money in" },
   { key: "bills", label: "Bills and cash" },
   { key: "running-costs", label: "Running costs" },
@@ -180,17 +180,26 @@ function BalanceCard({
 
 function OverviewTab({ data }: { data: Ready }) {
   const { result } = data
+  const earlier = earlierMonths(result, formatMoney)
   return (
     <>
-      <BalanceCard result={result} className="max-md:order-last" />
+      <BalanceCard
+        result={result}
+        // It shows last on mobile but comes first in the page, so the browser mustn't
+        // hold it still when something above it opens.
+        className="max-md:order-last max-md:[overflow-anchor:none]"
+      />
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <CardTitle>Take-home by month</CardTitle>
+            <CardDescription>
+              By cash: money as it lands in and leaves the bank.
+            </CardDescription>
           </div>
           <CopyButton text={breakdownText(result.months)} />
         </CardHeader>
-        <CardContent className="max-md:px-2">
+        <CardContent className="flex flex-col gap-4 max-md:px-2">
           <MonthSwipe className="grid items-start gap-4 lg:grid-cols-3">
             {overviewBuckets(result, formatMoney).map((b) => (
               <MonthPane key={b.month} month={b.month}>
@@ -198,53 +207,21 @@ function OverviewTab({ data }: { data: Ready }) {
               </MonthPane>
             ))}
           </MonthSwipe>
+          {earlier.length > 0 && (
+            <details className="border-t border-border pt-3">
+              <summary className="cursor-pointer text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+                Earlier months ({earlier.length})
+              </summary>
+              <div className="grid items-start gap-3 pt-3 sm:grid-cols-2 lg:grid-cols-4">
+                {earlier.map((m) => (
+                  <EarlierMonthCard key={m.month} month={m} />
+                ))}
+              </div>
+            </details>
+          )}
         </CardContent>
       </Card>
     </>
-  )
-}
-
-function InOutTab({ data }: { data: Ready }) {
-  const rows = inOutMonths(data.result, formatMoney)
-  const shown = new Set(data.result.months.map((m) => m.month))
-  const earlier = rows.filter((m) => !shown.has(m.month))
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Money in and out, before dividends</CardTitle>
-        <CardDescription>
-          Bank movements for past months, forecast for later ones. Leaves out
-          dividends and the month-end payout.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4 max-md:px-2">
-        <MonthSwipe className="grid items-start gap-4 lg:grid-cols-3">
-          {rows.map((m) =>
-            shown.has(m.month) ? (
-              <MonthPane key={m.month} month={m.month}>
-                <InOutMonthCard month={m} />
-              </MonthPane>
-            ) : (
-              <div key={m.month} className="min-w-0 max-md:hidden">
-                <InOutMonthCard month={m} />
-              </div>
-            )
-          )}
-        </MonthSwipe>
-        {earlier.length > 0 && (
-          <details className="border-t border-border md:hidden">
-            <summary className="cursor-pointer text-sm font-medium">
-              Earlier months ({earlier.length})
-            </summary>
-            <div className="flex flex-col gap-4 pt-2">
-              {earlier.map((m) => (
-                <InOutMonthCard key={m.month} month={m} />
-              ))}
-            </div>
-          </details>
-        )}
-      </CardContent>
-    </Card>
   )
 }
 
@@ -263,62 +240,48 @@ function BillsTab({ data }: { data: Ready }) {
         payments={data.unlinkedPayments}
         contractors={contractors}
       />
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Hold-backs</CardTitle>
-            <CardDescription>
-              Kept from a payout so next month&apos;s bills can be paid on time.
-              Click a month to change it.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <HoldBacksTable months={result.months} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Bank balance</CardTitle>
-            <CardDescription>
-              {data.xeroClosing !== null
-                ? `Xero says ${formatPence(data.xeroClosing)}. `
-                : ""}
-              Enter today&apos;s real balance if Xero is behind.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap items-end gap-3">
-            {data.operatingAccountId && (
-              <ActionForm
-                action={saveManualBalance}
-                submit="Save balance"
-                variant="outline"
-                className="flex-row flex-wrap items-end"
-              >
-                <input
-                  type="hidden"
-                  name="accountId"
-                  value={data.operatingAccountId}
-                />
-                <Field
-                  name="closingGbp"
-                  label="Balance today (£)"
-                  inputMode="decimal"
-                  className="w-40"
-                  defaultValue={data.manualBalance ?? ""}
-                  required
-                />
-              </ActionForm>
-            )}
-            {data.manualBalance !== null && (
-              <ActionForm
-                action={clearManualBalance}
-                submit="Clear"
-                variant="ghost"
+      <Card>
+        <CardHeader>
+          <CardTitle>Bank balance</CardTitle>
+          <CardDescription>
+            {data.xeroClosing !== null
+              ? `Xero says ${formatPence(data.xeroClosing)}. `
+              : ""}
+            Enter today&apos;s real balance if Xero is behind.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-end gap-3">
+          {data.operatingAccountId && (
+            <ActionForm
+              action={saveManualBalance}
+              submit="Save balance"
+              variant="outline"
+              className="flex-row flex-wrap items-end"
+            >
+              <input
+                type="hidden"
+                name="accountId"
+                value={data.operatingAccountId}
               />
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              <Field
+                name="closingGbp"
+                label="Balance today (£)"
+                inputMode="decimal"
+                className="w-40"
+                defaultValue={data.manualBalance ?? ""}
+                required
+              />
+            </ActionForm>
+          )}
+          {data.manualBalance !== null && (
+            <ActionForm
+              action={clearManualBalance}
+              submit="Clear"
+              variant="ghost"
+            />
+          )}
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle>Adjustments</CardTitle>
@@ -482,6 +445,9 @@ export default async function ForecastPage({
 }) {
   await requireDirector()
   const { tab: requested, month } = await searchParams
+  // In and out is now part of the Overview: old links still land somewhere useful.
+  if (requested === "in-out")
+    redirect(month ? `/forecast?month=${month}` : "/forecast")
   const tab: TabKey =
     requested === "money"
       ? "bills"
@@ -548,12 +514,10 @@ export default async function ForecastPage({
       <div className="flex flex-col gap-4 md:gap-8">
         {header}
         <Warnings warnings={data.warnings} />
-        {(tab === "overview" ||
-          tab === "in-out" ||
-          tab === "money-in" ||
-          tab === "bills") && <MonthSwitcher />}
+        {(tab === "overview" || tab === "money-in" || tab === "bills") && (
+          <MonthSwitcher />
+        )}
         {tab === "overview" && <OverviewTab data={data} />}
-        {tab === "in-out" && <InOutTab data={data} />}
         {tab === "money-in" && <MoneyInTab data={data} />}
         {tab === "bills" && <BillsTab data={data} />}
         {tab === "running-costs" && (

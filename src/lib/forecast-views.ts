@@ -223,6 +223,16 @@ export function inOutMonths(
   return [...past, ...current]
 }
 
+/** Complete months from the bank, newest first, for the collapsed history. */
+export function earlierMonths(
+  result: Ready,
+  formatMoney: (amount: string) => string
+): InOutMonth[] {
+  return inOutMonths(result, formatMoney)
+    .filter((m) => m.basis === "actual")
+    .reverse()
+}
+
 // ------------------------------------------------------------------ overview
 
 export type OverviewBucket = MonthSum & {
@@ -230,6 +240,10 @@ export type OverviewBucket = MonthSum & {
   /** Opening less closing balance: what the bank adds to the payout, or keeps. */
   fromBank: string
   opening: string
+  /** The same figure In and out gives: no dividends, payout or transfers. */
+  leftBeforeDividends: string
+  /** Borrowed from the tax reserve, which that figure doesn't count as income. */
+  fromReserve: string
   takeHome: string
   /** What the take-home is made of, in words. */
   takeHomeNote: string
@@ -248,6 +262,9 @@ export function overviewBuckets(
   formatMoney: (amount: string) => string
 ): OverviewBucket[] {
   const clients = payoutBuckets(result, formatMoney).months
+  const inOut = new Map(
+    inOutMonths(result, formatMoney).map((m) => [m.month, m])
+  )
   return result.months.map((m, i): OverviewBucket => {
     const adjustment = new D(m.adjustments)
     return {
@@ -320,6 +337,8 @@ export function overviewBuckets(
       payoutDate: m.payoutDate,
       fromBank: money(new D(m.opening).minus(m.closing)),
       opening: m.opening,
+      leftBeforeDividends: inOut.get(m.month)!.left,
+      fromReserve: inOut.get(m.month)!.fromReserve,
       takeHome: m.takeHomePerDirector,
       takeHomeNote: takeHomeNote(result, m.takeHomePerDirector, formatMoney),
       payout: money(new D(m.directorPay).abs()),

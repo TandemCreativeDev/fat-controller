@@ -268,11 +268,10 @@ function InvoiceCard({
   return (
     <li
       className={cn(
-        "flex flex-col gap-2 rounded-lg border bg-background/60 p-3 text-sm",
+        "flex flex-col gap-2 rounded-lg border bg-background p-3 text-sm",
         kind === "predicted" && "border-dashed border-primary/60",
         kind === "raised" && "border-solid border-border",
-        kind === "overdue" &&
-          "border-solid border-destructive/60 bg-destructive/5",
+        kind === "overdue" && "border-solid border-destructive/60",
         !row.included && "opacity-50"
       )}
       // On mobile, the whole card opens the editor. Its controls keep their own job.
@@ -367,19 +366,33 @@ function ClientBlock({
           {formatMoney(group.total)}
         </p>
       </div>
-      <ul className="flex flex-col gap-2">
-        {group.invoices.map((i) => (
-          <InvoiceCard
-            key={i.row.key}
-            invoice={i}
-            month={month.name}
-            open={openKey === i.row.key}
-            onToggle={() =>
-              setOpenKey(openKey === i.row.key ? null : i.row.key)
-            }
-          />
+      <div className="flex flex-col gap-3.5">
+        {group.runs.map((run) => (
+          <div
+            key={`${run.dueDate}|${run.raiseDate}`}
+            role="group"
+            aria-label={`Invoices due ${formatDayName(run.dueDate)}, ${run.invoices.length} ${run.invoices.length === 1 ? "invoice" : "invoices"}, ${formatMoney(run.total)}`}
+            className="run-tray flex flex-col rounded-[13px] border border-white/6 bg-white/[0.035] p-1.5"
+          >
+            <ul className="flex flex-col gap-1.5">
+              {run.invoices.map((i) => (
+                <InvoiceCard
+                  key={i.row.key}
+                  invoice={i}
+                  month={month.name}
+                  open={openKey === i.row.key}
+                  onToggle={() =>
+                    setOpenKey(openKey === i.row.key ? null : i.row.key)
+                  }
+                />
+              ))}
+            </ul>
+            <p className="px-2 pt-1 pb-0.5 text-right font-mono text-xs text-muted-foreground tabular-nums">
+              {formatMoney(run.total)}
+            </p>
+          </div>
         ))}
-      </ul>
+      </div>
     </section>
   )
 }
