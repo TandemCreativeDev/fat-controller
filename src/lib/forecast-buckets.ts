@@ -91,6 +91,8 @@ export type PayoutBucket = {
   takeHomeNote: string | null
   /** Invoices less set-asides, shared between directors. Not take-home. */
   each: string
+  /** Days invoiced or forecast on included invoices, across all clients. */
+  days: string
   /** Client money that has already landed this month, and so isn't listed. */
   received: string
   raised: string
@@ -250,6 +252,7 @@ function buildBucket(
     takeHome,
     takeHomeNote,
     totalIn: money(totalIn),
+    days: days(sum(included.map((i) => new D(i.row.totalDays))).toFixed(4)),
     each: money(addEach(included)),
     received: money(received),
     raised: money(raised),

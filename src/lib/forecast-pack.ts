@@ -129,7 +129,7 @@ export function buildForecastPack(d: ForecastPackInput): string {
 
   const plain = (v: string) => v
   out.push(
-    "## Take-home by month\n\nEach month as a sum: money in, less money out, gives what's left from the month. Adding what comes from the bank (opening balance less what's left after take-home; negative means kept in the bank) gives the payout, shared between the directors. The payout includes salary and dividends.\n\n" +
+    "## Take-home by month\n\nEach month adds up from top to bottom: left from the month (money in less money out), plus brought forward from last month (the opening balance), less what's left in the bank at the end of the month, gives take-home between directors. Half of that is take-home each, which includes salary and dividends.\n\n" +
       overviewBuckets(result, plain)
         .map((b) =>
           [
@@ -143,11 +143,11 @@ export function buildForecastPack(d: ForecastPackInput): string {
                 ...b.moneyOut.map((r) => ["Money out", r.label, r.amount]),
                 ["Money out", "Total", b.moneyOutTotal],
                 ["Result", "Left from the month", b.left],
-                ["Result", "From the bank", b.fromBank],
-                ["Result", "Payout, all directors", b.payout],
+                ["Result", "Brought forward from last month", b.opening],
+                ["Result", "Left in the bank after take-home", b.closing],
+                ["Result", "Take-home between directors", b.payout],
                 ["Result", "Take-home per director", b.takeHome],
                 ["Result", "Take-home is made of", b.takeHomeNote],
-                ["Result", "Leaves in the bank", b.closing],
                 ...(b.holdBack ? [["Result", "Held back", b.holdBack]] : []),
                 ...(b.shortfall
                   ? [["Result", "Short next month", b.shortfall]]
@@ -269,6 +269,7 @@ export function buildForecastPack(d: ForecastPackInput): string {
         : []),
       `- **Invoices after tax set-aside:** ${b.each} each (before contractor bills and running costs, so it isn't take-home)`,
       `- **Invoiced in:** ${b.totalIn}, of which ${b.raised} raised and ${b.predicted} predicted${b.received !== "0.00" ? `, including ${b.received} already received` : ""}`,
+      `- **Total days worked:** ${b.days}`,
       `- **Left out:** ${b.leftOut ? `${b.leftOut.count} invoices, worth ${b.leftOut.worth} (${b.leftOut.each} per director)` : "nothing"}`,
       "",
       markdownTable(

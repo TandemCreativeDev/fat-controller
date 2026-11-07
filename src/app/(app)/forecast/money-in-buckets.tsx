@@ -466,9 +466,7 @@ function Bucket({
         <SplitBar parts={bucket.segments} />
         <SplitLegend parts={bucket.segments} amount={formatMoney} />
         <p className="min-h-8 text-xs text-muted-foreground tabular-nums">
-          {bucket.leftOut
-            ? `${bucket.leftOut.count} left out, worth ${formatMoney(bucket.leftOut.worth)} (${formatMoney(bucket.leftOut.each)} each)`
-            : "Nothing left out"}
+          Total days worked: {bucket.days}
         </p>
       </header>
       {empty ? (

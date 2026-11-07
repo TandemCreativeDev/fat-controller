@@ -542,6 +542,8 @@ export type MonthBreakdown = {
   otherIn: string
   contractorBills: string
   setAsides: string
+  /** The part of setAsides that repays money taken from the tax reserve. */
+  reserveRepaid: string
   vatPayments: string
   otherTransfersOut: string
   runningCosts: string
@@ -2325,6 +2327,7 @@ function monthRows(
     otherIn: money(otherIn),
     contractorBills: money(contractorBills),
     setAsides: money(setAsides),
+    reserveRepaid: money(total("reserve_repayment")),
     vatPayments: money(vatPayments),
     otherTransfersOut: money(otherTransfersOut),
     runningCosts: money(runningCosts),

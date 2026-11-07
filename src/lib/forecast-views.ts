@@ -239,8 +239,6 @@ export function earlierMonths(
 
 export type OverviewBucket = MonthSum & {
   payoutDate: string
-  /** Opening balance less what's left after take-home: what the bank adds, or keeps. */
-  fromBank: string
   opening: string
   takeHome: string
   /** What the take-home is made of, in words. */
@@ -260,7 +258,7 @@ export type OverviewBucket = MonthSum & {
 }
 
 export type LeftInBank = {
-  key: "hold_back" | "set_asides" | "vat" | "buffer"
+  key: "hold_back" | "set_asides" | "vat" | "buffer" | "after_take_home"
   label: string
   amount: string
   reason: string
@@ -321,12 +319,27 @@ function leftInBank(
   ]
   const shown = rows.filter((r) => new D(r.amount).gt(0))
   // Only explain what adds up: anything else would be a made-up reason.
-  return sum(shown.map((r) => new D(r.amount)))
-    .minus(m.afterPayout)
-    .abs()
-    .lte(0.01)
+  if (
+    sum(shown.map((r) => new D(r.amount)))
+      .minus(m.afterPayout)
+      .abs()
+      .gt(0.01)
+  )
+    return []
+  // What moves between take-home day and the end of the month, so this adds up
+  // to the closing balance that next month starts from.
+  const after = new D(m.closing).minus(m.afterPayout)
+  return after.isZero()
     ? shown
-    : []
+    : [
+        ...shown,
+        {
+          key: "after_take_home",
+          label: after.lt(0) ? "Spent after take-home" : "In after take-home",
+          amount: money(after),
+          reason: "",
+        },
+      ]
 }
 
 export function overviewBuckets(
@@ -371,7 +384,13 @@ export function overviewBuckets(
           row(
             "set_asides",
             "Tax set-asides",
-            new D(m.setAsides).abs(),
+            new D(m.setAsides).minus(m.reserveRepaid).abs(),
+            CATEGORY_COLOUR.set_asides
+          ),
+          row(
+            "reserve_repaid",
+            "Repaid to tax reserve",
+            new D(m.reserveRepaid).abs(),
             CATEGORY_COLOUR.set_asides
           ),
           {
@@ -404,7 +423,6 @@ export function overviewBuckets(
         ]
       ),
       payoutDate: m.payoutDate,
-      fromBank: money(new D(m.opening).minus(m.afterPayout)),
       opening: m.opening,
       takeHome: m.takeHomePerDirector,
       takeHomeNote: takeHomeNote(result, m.takeHomePerDirector, formatMoney),

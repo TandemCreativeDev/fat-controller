@@ -2361,6 +2361,10 @@ describe("in and out", () => {
   })
 })
 
+/** Left from the month + brought forward − left in the bank. */
+const addsUp = (b: ReturnType<typeof overviewBuckets>[number]) =>
+  (Number(b.left) + Number(b.opening) - Number(b.closing)).toFixed(2)
+
 describe("the overview", () => {
   const view = (extra: Partial<ForecastInput> = {}) => {
     const r = run(baseInput(extra))
@@ -2375,17 +2379,59 @@ describe("the overview", () => {
     expect(b.takeHome).toBe(m.takeHomePerDirector)
     expect(b.closing).toBe(m.closing)
     expect(b.payout).toBe("10650.00")
-    expect(b.fromBank).toBe("900.00")
-    expect(Number(b.left) + Number(b.fromBank)).toBe(Number(b.payout))
+    expect(addsUp(b)).toBe(b.payout)
   })
 
-  it("takes what the bank adds from the balance left after take-home", () => {
-    const { r, buckets } = view()
-    buckets.forEach((b, i) =>
-      expect(Number(b.fromBank)).toBeCloseTo(
-        Number(r.months[i].opening) - Number(r.months[i].afterPayout),
-        2
-      )
+  it("adds up from top to bottom to the penny, whatever the month", () => {
+    const repaid = {
+      ...raw({
+        date: "2026-06-01",
+        amount: "600.00",
+        direction: "in",
+        sourceId: "back",
+      }),
+      kind: "backstop_in" as const,
+      personId: null,
+    }
+    for (const input of [
+      baseInput({ settings: { ...baseInput().settings, months: 3 } }),
+      baseInput({
+        cash: [...baseInput().cash, repaid],
+        settings: { ...baseInput().settings, months: 3 },
+      }),
+    ]) {
+      const r = run(input)
+      const buckets = overviewBuckets(r, formatMoney)
+      buckets.forEach((b, i) => {
+        expect(addsUp(b)).toBe(b.payout)
+        if (i > 0) expect(b.opening).toBe(buckets[i - 1].closing)
+        if (b.leftInBank.length > 0)
+          expect(
+            b.leftInBank.reduce((t, x) => t + Number(x.amount), 0).toFixed(2)
+          ).toBe(b.closing)
+      })
+    }
+  })
+
+  it("keeps money repaid to the tax reserve out of the set-asides line", () => {
+    const repaid = {
+      ...raw({
+        date: "2026-06-01",
+        amount: "600.00",
+        direction: "in",
+        sourceId: "back",
+      }),
+      kind: "backstop_in" as const,
+      personId: null,
+    }
+    const r = run(baseInput({ cash: [...baseInput().cash, repaid] }))
+    const b = overviewBuckets(r, formatMoney)[0]
+    const out = (key: string) => b.moneyOut.find((x) => x.key === key)?.amount
+    expect(out("reserve_repaid")).toBe("600.00")
+    expect(b.moneyIn.find((x) => x.key === "backstop")?.amount).toBe("600.00")
+    expect(Number(out("set_asides"))).toBeCloseTo(
+      Math.abs(Number(r.months[0].setAsides)) - 600,
+      2
     )
   })
 
@@ -2429,7 +2475,7 @@ describe("the overview", () => {
       balance: { opening: "1000.00", closing: "1600.00" },
     }).buckets[0]
     expect(b.moneyIn.find((r) => r.key === "backstop")!.amount).toBe("600.00")
-    expect(Number(b.left) + Number(b.fromBank)).toBe(Number(b.payout))
+    expect(addsUp(b)).toBe(b.payout)
   })
 
   it("copes with a month where nothing moves", () => {
@@ -3045,5 +3091,18 @@ describe("days per client", () => {
       .months.flatMap((b) => b.clients)
       .find((c) => c.invoices.some((i) => i.row.key === key))!
     expect(Number(after.days)).toBe(0)
+  })
+})
+
+describe("days per month", () => {
+  it("adds up the days on every ticked invoice in the month", () => {
+    const { months } = payoutBuckets(run(baseInput()), formatMoney)
+    for (const b of months) {
+      const expected = b.clients
+        .flatMap((c) => c.invoices)
+        .filter((i) => i.row.included)
+        .reduce((t, i) => t + Number(i.row.totalDays), 0)
+      expect(Number(b.days)).toBeCloseTo(expected, 2)
+    }
   })
 })

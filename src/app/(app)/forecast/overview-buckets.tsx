@@ -9,6 +9,7 @@ import {
   formatMoney,
   formatMonth,
   formatMonthName,
+  formatSigned,
 } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -153,22 +154,13 @@ function ReserveNote({ fromReserve }: { fromReserve: string }) {
   )
 }
 
-function Headline({
-  label,
-  sub,
-  value,
-}: {
-  label: string
-  sub?: string
-  value: string
-}) {
+function Headline({ label, value }: { label: string; value: string }) {
   return (
     <div className="mt-1 flex flex-wrap items-end justify-between gap-x-3">
       <div>
         <p className="text-xs font-semibold tracking-[0.08em] text-success uppercase">
           {label}
         </p>
-        {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
       </div>
       <p className={cn(figure, "text-3xl font-medium text-success")}>{value}</p>
     </div>
@@ -177,16 +169,9 @@ function Headline({
 
 /** One month: what came in, what went out, and what each director takes home. */
 export function OverviewBucketCard({ bucket }: { bucket: OverviewBucket }) {
-  const bankLabel =
-    Number(bucket.fromBank) < 0 ? "Kept in the bank" : "Plus from the bank"
-  const bankAmount = formatBalance(bucket.fromBank.replace("-", ""))
   const headline = (
     <>
-      <Headline
-        label="Take-home each"
-        sub={`${formatMoney(bucket.payout)} between directors`}
-        value={formatMoney(bucket.takeHome)}
-      />
+      <Headline label="Take-home each" value={formatMoney(bucket.takeHome)} />
       <p className="text-xs text-foreground tabular-nums">
         {bucket.takeHomeNote}
       </p>
@@ -200,49 +185,31 @@ export function OverviewBucketCard({ bucket }: { bucket: OverviewBucket }) {
       top={headline}
     >
       <Line label="Left from the month" value={formatBalance(bucket.left)} />
-      <div className="hidden md:block">
-        <Line label={bankLabel} value={bankAmount} />
+      <Line
+        label="Brought forward from last month"
+        value={formatSigned(bucket.opening)}
+      />
+      <Line
+        label="Left in the bank after take-home"
+        value={formatSigned(String(-Number(bucket.closing)))}
+      />
+      {bucket.leftInBank.length > 0 && (
+        <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
+          {bucket.leftInBank.map((r) => (
+            <li key={r.key}>
+              {r.label} {formatBalance(r.amount)}
+              {r.key === "hold_back" && r.reason && `: ${r.reason}`}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="border-t border-border pt-2">
+        <Line
+          label="Take-home between directors"
+          value={formatMoney(bucket.payout)}
+        />
       </div>
-      <details className="md:hidden">
-        <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-2 text-sm text-muted-foreground">
-          <span>{bankLabel}</span>
-          <span className={cn(figure, "text-foreground")}>{bankAmount}</span>
-        </summary>
-        <p className="pb-2 text-xs text-muted-foreground tabular-nums">
-          Starts with {formatBalance(bucket.opening)},{" "}
-          {formatBalance(bucket.afterPayout)} left after take-home
-        </p>
-      </details>
-      <div className="hidden flex-col gap-2 md:flex">{headline}</div>
-      <section
-        aria-label={`Left in the bank, ${formatMonthName(bucket.month)}`}
-        className={cn(
-          "flex flex-col gap-2 rounded-md border p-3",
-          bucket.holdBack
-            ? "border-amber-400/60 bg-amber-400/10"
-            : "border-border"
-        )}
-      >
-        <p className="flex items-baseline justify-between gap-2 text-sm font-semibold">
-          <span>Left in the bank after take-home</span>
-          <span className={figure}>{formatBalance(bucket.afterPayout)}</span>
-        </p>
-        {bucket.leftInBank.map((r) => (
-          <div key={r.key} className="flex flex-col gap-0.5 text-xs">
-            <p className="flex items-baseline justify-between gap-2 font-medium">
-              <span>{r.label}</span>
-              <span className={figure}>{formatMoney(r.amount)}</span>
-            </p>
-            {r.reason && <p className="text-muted-foreground">{r.reason}</p>}
-          </div>
-        ))}
-        {bucket.afterPayout !== bucket.closing && (
-          <p className="text-xs text-muted-foreground">
-            Ends the month at {formatBalance(bucket.closing)}, after costs in
-            the last days of the month.
-          </p>
-        )}
-      </section>
+      {headline}
       {bucket.shortfall && (
         <p className="text-xs font-medium text-destructive">
           {formatMoney(bucket.shortfall)} short next month
