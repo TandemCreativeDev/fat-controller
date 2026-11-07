@@ -109,7 +109,7 @@ export function buildForecastPack(d: ForecastPackInput): string {
       "- **Hold-back:** kept from a month's payout when next month's contractor bills couldn't otherwise be paid by their due dates.",
       `- **VAT:** ${settings.vatRegisteredFrom ? `registered from ${settings.vatRegisteredFrom}, at ${percent(settings.vatRate)}.` : "not registered."}`,
       `- **Director salary:** ${settings.directorSalaryGbp} a month each, paid inside the month-end payout. There are ${result.directorCount} directors.`,
-      `- **Running costs:** forecast at ${result.runningCostAverage} a month, the average of the last three complete months.`,
+      `- **Running costs:** forecast at ${result.runningCostAverage} a month, the average of the last three complete months, leaving out charges marked as one-offs (${result.runningCosts.averageWithOneOffs} with them).`,
       "- **Tracking start:** " + settings.startDate + ".",
       "",
       "### Source tags",
@@ -476,6 +476,36 @@ export function buildForecastPack(d: ForecastPackInput): string {
           ].join("\n")
         )
         .join("\n\n")
+  )
+
+  const costs = result.runningCosts
+  const costTable = (groups: typeof costs.recurring) =>
+    markdownTable(
+      ["Paid to", "Date", "Amount", "Status", "Marked one-off"],
+      groups.flatMap((g) =>
+        g.charges.map((c) => [
+          g.label,
+          c.date,
+          c.amount,
+          c.status,
+          c.oneOff ? "yes" : "no",
+        ])
+      )
+    )
+  out.push(
+    `## Running costs\n\nForecast at ${costs.average} a month (${costs.averageWithOneOffs} with one-offs). Spent so far: ${costs.spent}. Still to come: ${costs.forecast}. Total: ${costs.total}. Status \`in_average\` means one of the three months behind the average, \`one_off\` is left out of it, \`this_month\` isn't in it yet, and \`older\` no longer counts. One-offs still count as money spent.\n\n` +
+      markdownTable(
+        ["Month", "Total", "Spent", "Forecast", "One-offs", "In the average"],
+        costs.months.map((m) => [
+          m.month.slice(0, 7),
+          m.total,
+          m.spent,
+          m.forecast,
+          m.oneOffs,
+          m.inAverage ? "yes" : "no",
+        ])
+      ) +
+      `\n\n### Recurring\n\n${costTable(costs.recurring)}\n\n### Single charges\n\n${costTable(costs.single)}`
   )
 
   out.push(

@@ -1,3 +1,5 @@
+import Link from "next/link"
+
 import { Dot } from "@/components/split-bar"
 import type { InOutMonth, MonthSum, OverviewBucket } from "@/lib/forecast-views"
 import {
@@ -51,7 +53,16 @@ function SumSection({
           {rows.map((r) => (
             <li key={r.key} className="flex items-baseline gap-2">
               <Dot colour={r.colour} className="self-center" />
-              <span className="min-w-0 flex-1">{r.label}</span>
+              {r.href ? (
+                <Link
+                  href={r.href}
+                  className="min-w-0 flex-1 underline decoration-muted-foreground underline-offset-4 hover:decoration-foreground"
+                >
+                  {r.label}
+                </Link>
+              ) : (
+                <span className="min-w-0 flex-1">{r.label}</span>
+              )}
               <span className={figure}>{formatMoney(r.amount)}</span>
             </li>
           ))}

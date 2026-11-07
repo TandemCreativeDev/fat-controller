@@ -75,6 +75,7 @@ const input: ForecastInput = {
   taxReserveBalance: "5000.00",
   expectations: [],
   customInvoices: [],
+  oneOffCosts: [],
   contacts: [],
 }
 

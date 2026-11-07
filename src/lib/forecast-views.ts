@@ -61,6 +61,8 @@ export type SumRow = {
   label: string
   amount: string
   colour: string
+  /** Where to see what's behind this row. */
+  href?: string
 }
 
 /** One month as a sum: what came in, what went out, and what that leaves. */
@@ -102,7 +104,13 @@ const row = (
   label: string,
   amount: Decimal.Value,
   colour: string
-): SumRow => ({ key, label, amount: money(amount), colour })
+): SumRow => ({
+  key,
+  label,
+  amount: money(amount),
+  colour,
+  ...(key === "running" ? { href: "/forecast?tab=running-costs" } : {}),
+})
 
 // ------------------------------------------------------------------ in and out
 

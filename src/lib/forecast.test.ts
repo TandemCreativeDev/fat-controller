@@ -199,6 +199,7 @@ function baseInput(overrides: Partial<ForecastInput> = {}): ForecastInput {
     taxReserveBalance: "5000.00",
     expectations: [],
     customInvoices: [],
+    oneOffCosts: [],
     contacts: [
       { id: "client-a", name: "ALPHA HOLDINGS LTD" },
       { id: "client-b", name: "Beta Partners" },
@@ -2711,5 +2712,98 @@ describe("accuracy", () => {
       difference14: "1000.00",
       difference7: "-500.00",
     })
+  })
+})
+
+describe("running cost tally", () => {
+  const paid = (
+    date: string,
+    amount: string,
+    id: string,
+    contactId: string | null
+  ) => ({
+    ...cost(date, amount),
+    sourceId: id,
+    contactId,
+  })
+  const cash = [
+    paid("2026-03-10", "30.00", "s-mar", "ct-sub"),
+    paid("2026-04-10", "30.00", "s-apr", "ct-sub"),
+    paid("2026-05-10", "30.00", "s-may", "ct-sub"),
+    paid("2026-04-20", "900.00", "laptop", "ct-shop"),
+    paid("2026-02-10", "50.00", "old", "ct-old"),
+  ]
+  const contacts = [
+    { id: "ct-sub", name: "Subscription" },
+    { id: "ct-shop", name: "Shop" },
+    { id: "ct-old", name: "Old" },
+  ]
+  const tally = (oneOffCosts: string[] = []) =>
+    run(baseInput({ cash, contacts, oneOffCosts }))
+
+  it("leaves a one-off out of the average but not out of what was spent", () => {
+    expect(tally().runningCostAverage).toBe("330.00")
+    const r = tally(["laptop"])
+    expect(r.runningCostAverage).toBe("30.00")
+    expect(r.runningCosts.average).toBe("30.00")
+    expect(r.runningCosts.averageWithOneOffs).toBe("330.00")
+    const april = r.runningCosts.months.find((m) => m.month === "2026-04-01")!
+    expect(april.total).toBe("930.00")
+    expect(april.oneOffs).toBe("900.00")
+    expect(april.inAverage).toBe(true)
+  })
+
+  it("groups a payee charged in several months and lists each date", () => {
+    const { recurring, single } = tally().runningCosts
+    expect(recurring.map((g) => g.label)).toEqual(["Subscription"])
+    expect(recurring[0].charges.map((c) => c.date)).toEqual([
+      "2026-05-10",
+      "2026-04-10",
+      "2026-03-10",
+    ])
+    expect(recurring[0].perMonth).toBe("30.00")
+    expect(single.map((g) => g.label)).toEqual(["Shop", "Old"])
+  })
+
+  it("keeps groups in the same order when one is marked", () => {
+    const order = (ids: string[]) =>
+      tally(ids).runningCosts.single.map((g) => g.label)
+    expect(order(["laptop"])).toEqual(order([]))
+  })
+
+  it("only lets a director mark charges the average uses now or later", () => {
+    const { single } = tally().runningCosts
+    const old = single.find((g) => g.label === "Old")!.charges[0]
+    expect(old.status).toBe("older")
+    expect(old.canMark).toBe(false)
+    const laptop = single.find((g) => g.label === "Shop")!.charges[0]
+    expect(laptop.status).toBe("in_average")
+    expect(laptop.canMark).toBe(true)
+    expect(
+      tally(["laptop"]).runningCosts.single.find((g) => g.label === "Shop")!
+        .charges[0].status
+    ).toBe("one_off")
+  })
+
+  it("adds the forecast to the bank spend for the months ahead", () => {
+    const { spent, forecast, total, months } = tally().runningCosts
+    expect(spent).toBe("1040.00")
+    expect(months.at(-1)!.spent).toBe("0.00")
+    expect(Number(forecast)).toBeGreaterThan(0)
+    expect(Number(total)).toBeCloseTo(Number(spent) + Number(forecast), 2)
+  })
+
+  it("nets a refund and adds up the lines of one bank movement", () => {
+    const split = [
+      paid("2026-05-02", "10.00", "split", "ct-shop"),
+      paid("2026-05-02", "5.00", "split", "ct-shop"),
+      {
+        ...paid("2026-05-09", "4.00", "back", "ct-shop"),
+        direction: "in" as const,
+      },
+    ]
+    const r = run(baseInput({ cash: split, contacts }))
+    const charges = r.runningCosts.single[0].charges
+    expect(charges.map((c) => c.amount)).toEqual(["-4.00", "15.00"])
   })
 })

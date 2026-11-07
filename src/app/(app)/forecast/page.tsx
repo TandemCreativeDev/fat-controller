@@ -46,6 +46,7 @@ import { AdjustmentsTable, HoldBacksTable } from "./cash-tables"
 import { InOutMonthCard, OverviewBucketCard } from "./overview-buckets"
 import { CopyButton } from "./copy-button"
 import { MoneyInBuckets } from "./money-in-buckets"
+import { RunningCosts } from "./running-costs"
 import { Timeline } from "./timeline"
 
 const TABS = [
@@ -53,6 +54,7 @@ const TABS = [
   { key: "in-out", label: "In and out" },
   { key: "money-in", label: "Money in" },
   { key: "bills", label: "Bills and cash" },
+  { key: "running-costs", label: "Running costs" },
   { key: "timeline", label: "Timeline" },
   { key: "accuracy", label: "Accuracy" },
 ] as const
@@ -516,6 +518,9 @@ export default async function ForecastPage({
       {tab === "in-out" && <InOutTab data={data} />}
       {tab === "money-in" && <MoneyInTab data={data} />}
       {tab === "bills" && <BillsTab data={data} />}
+      {tab === "running-costs" && (
+        <RunningCosts tally={data.result.runningCosts} />
+      )}
       {tab === "timeline" && <TimelineTab data={data} />}
       {tab === "accuracy" && <AccuracyTab data={data} />}
     </div>

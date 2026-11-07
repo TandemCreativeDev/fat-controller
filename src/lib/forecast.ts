@@ -603,6 +603,8 @@ export type ForecastInput = {
   customInvoices: CustomInvoiceInput[]
   /** Xero contacts, for client names. */
   contacts: { id: string; name: string }[]
+  /** Running-cost bank movements marked as one-offs, by source ID. */
+  oneOffCosts: string[]
 }
 
 /** A past month's bank movements, by what they were for. */
@@ -632,6 +634,7 @@ export type ForecastResult =
       timeline: TimelineEvent[]
       warnings: ForecastWarning[]
       runningCostAverage: string
+      runningCosts: RunningCostTally
       taxReserveBalance: string | null
       directorCount: number
       /** Salaries a month, all directors together. */
@@ -1910,20 +1913,229 @@ function prepare(
   }
 }
 
-/** The average of the last three complete months of running-cost spend. */
-function runningCostAverage(input: ForecastInput): Dec {
+/** What a running-cost line took out of the bank; a refund is negative. */
+const runningCostOf = (l: CashLine) =>
+  l.direction === "out" ? new D(l.amount) : new D(l.amount).negated()
+
+/**
+ * The average of the last three complete months of running-cost spend,
+ * leaving out anything a director marked as a one-off.
+ */
+function runningCostAverage(
+  input: ForecastInput,
+  options: { withOneOffs?: boolean } = {}
+): Dec {
   const end = monthStart(input.today)
   const start = addMonths(end, -3)
+  const oneOffs = new Set(options.withOneOffs ? [] : input.oneOffCosts)
   const spent = sum(
     input.cash
       .filter(
-        (l) => l.kind === "running_cost" && l.date >= start && l.date < end
+        (l) =>
+          l.kind === "running_cost" &&
+          l.date >= start &&
+          l.date < end &&
+          !oneOffs.has(l.sourceId)
       )
-      .map((l) =>
-        l.direction === "out" ? new D(l.amount) : new D(l.amount).negated()
-      )
+      .map(runningCostOf)
   )
   return penny(spent.div(3))
+}
+
+export type RunningCostStatus =
+  /** Inside the three months the average uses. */
+  | "in_average"
+  /** Inside those months, but marked as a one-off. */
+  | "one_off"
+  /** This month: the average will start using it next month. */
+  | "this_month"
+  /** Before those months, so it no longer affects the forecast. */
+  | "older"
+
+/** One bank movement, with its lines on running-cost accounts added together. */
+export type RunningCostCharge = {
+  sourceId: string
+  date: string
+  amount: string
+  oneOff: boolean
+  status: RunningCostStatus
+  /** Marking a charge only matters if the average uses it now or will later. */
+  canMark: boolean
+}
+
+export type RunningCostGroup = {
+  key: string
+  label: string
+  /** Charged in more than one month. */
+  recurring: boolean
+  total: string
+  /** What this adds to the monthly average. */
+  perMonth: string
+  charges: RunningCostCharge[]
+}
+
+export type RunningCostMonth = {
+  month: string
+  spent: string
+  forecast: string
+  total: string
+  oneOffs: string
+  /** One of the three months the average uses. */
+  inAverage: boolean
+}
+
+export type RunningCostTally = {
+  average: string
+  averageWithOneOffs: string
+  /** Spent so far, in every month listed. */
+  spent: string
+  /** Still to come, at the average, up to the last forecast month. */
+  forecast: string
+  total: string
+  months: RunningCostMonth[]
+  /** Biggest effect on the average first. */
+  recurring: RunningCostGroup[]
+  single: RunningCostGroup[]
+}
+
+/** Every running cost from the bank, by who was paid, and what the forecast adds. */
+function runningCostTally(
+  input: ForecastInput,
+  shown: MonthBreakdown[]
+): RunningCostTally {
+  const thisMonth = monthStart(input.today)
+  const windowStart = addMonths(thisMonth, -3)
+  const oneOffs = new Set(input.oneOffCosts)
+  const contactName = new Map(input.contacts.map((c) => [c.id, c.name]))
+
+  type Raw = {
+    sourceId: string
+    date: string
+    amount: Dec
+    contactId: string | null
+    description: string | null
+  }
+  const bySource = new Map<string, Raw>()
+  for (const l of input.cash) {
+    if (l.kind !== "running_cost") continue
+    const hit = bySource.get(l.sourceId)
+    if (hit) hit.amount = hit.amount.plus(runningCostOf(l))
+    else
+      bySource.set(l.sourceId, {
+        sourceId: l.sourceId,
+        date: l.date,
+        amount: runningCostOf(l),
+        contactId: l.contactId,
+        description: l.description,
+      })
+  }
+
+  const statusOf = (r: Raw): RunningCostStatus => {
+    if (r.date >= thisMonth) return "this_month"
+    if (r.date < windowStart) return "older"
+    return oneOffs.has(r.sourceId) ? "one_off" : "in_average"
+  }
+  // Dates and references differ between charges, so they don't split a payee.
+  const keyOf = (r: Raw) =>
+    r.contactId ??
+    `text:${(r.description ?? "")
+      .toLowerCase()
+      .replace(/[^a-z]+/g, " ")
+      .trim()}`
+  const groups = new Map<string, Raw[]>()
+  for (const r of bySource.values())
+    groups.set(keyOf(r), [...(groups.get(keyOf(r)) ?? []), r])
+
+  // Sorted ignoring one-offs, so ticking one doesn't move anything on the page.
+  const windowSpend = (key: string) =>
+    sum(
+      (groups.get(key) ?? [])
+        .filter((r) => r.date >= windowStart && r.date < thisMonth)
+        .map((r) => r.amount)
+    )
+  const built = [...groups.entries()]
+    .map(([key, raws]): RunningCostGroup => {
+      const sorted = [...raws].sort((a, b) => b.date.localeCompare(a.date))
+      const first = sorted[0]
+      return {
+        key,
+        label:
+          (first.contactId && contactName.get(first.contactId)) ||
+          first.description ||
+          "No description",
+        recurring: new Set(raws.map((r) => monthStart(r.date))).size > 1,
+        total: money(sum(raws.map((r) => r.amount))),
+        perMonth: money(
+          sum(
+            raws
+              .filter((r) => statusOf(r) === "in_average")
+              .map((r) => r.amount)
+          ).div(3)
+        ),
+        charges: sorted.map((r) => ({
+          sourceId: r.sourceId,
+          date: r.date,
+          amount: money(r.amount),
+          oneOff: oneOffs.has(r.sourceId),
+          status: statusOf(r),
+          canMark: statusOf(r) !== "older",
+        })),
+      }
+    })
+    .sort(
+      (a, b) =>
+        windowSpend(b.key).comparedTo(windowSpend(a.key)) ||
+        new D(b.total).comparedTo(a.total) ||
+        a.label.localeCompare(b.label)
+    )
+
+  const raws = [...bySource.values()]
+  const firstDisplayed = shown[0]?.month ?? thisMonth
+  const earlier = [
+    ...new Set(
+      raws.map((r) => monthStart(r.date)).filter((m) => m < firstDisplayed)
+    ),
+  ].sort()
+  const spentIn = (month: string) =>
+    sum(raws.filter((r) => monthStart(r.date) === month).map((r) => r.amount))
+  const months = [
+    ...earlier.map((month) => ({ month, total: spentIn(month) })),
+    ...shown.map((m) => ({
+      month: m.month,
+      total: new D(m.runningCosts).abs(),
+    })),
+  ].map(({ month, total }): RunningCostMonth => {
+    const spent = spentIn(month)
+    return {
+      month,
+      spent: money(spent),
+      forecast: money(total.minus(spent)),
+      total: money(total),
+      oneOffs: money(
+        sum(
+          raws
+            .filter(
+              (r) => monthStart(r.date) === month && oneOffs.has(r.sourceId)
+            )
+            .map((r) => r.amount)
+        )
+      ),
+      inAverage: month >= windowStart && month < thisMonth,
+    }
+  })
+
+  const spent = sum(months.map((m) => new D(m.spent)))
+  const total = sum(months.map((m) => new D(m.total)))
+  return {
+    average: money(runningCostAverage(input)),
+    averageWithOneOffs: money(runningCostAverage(input, { withOneOffs: true })),
+    spent: money(spent),
+    forecast: money(total.minus(spent)),
+    total: money(total),
+    months,
+    recurring: built.filter((g) => g.recurring),
+    single: built.filter((g) => !g.recurring),
+  }
 }
 
 // ------------------------------------------------------------------ the whole thing
@@ -2205,6 +2417,7 @@ export function runForecast(input: ForecastInput): ForecastResult {
     timeline,
     warnings,
     runningCostAverage: money(runningCostAverage(input)),
+    runningCosts: runningCostTally(input, months),
     taxReserveBalance: input.taxReserveBalance,
     directorCount: directorCount(input),
     salaryPerMonth: money(

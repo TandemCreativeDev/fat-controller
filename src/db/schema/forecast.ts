@@ -224,6 +224,14 @@ export const invoiceExpectation = pgTable("invoice_expectation", {
   createdBy: createdBy(),
 })
 
+/** A running-cost bank movement a director marked as not recurring: left out of the average. */
+export const runningCostOneOff = pgTable("running_cost_one_off", {
+  /** The Xero bank transaction or payment ID. */
+  sourceId: text("source_id").primaryKey(),
+  createdBy: createdBy(),
+  createdAt: tstz("created_at").notNull().defaultNow(),
+})
+
 export const holdBack = pgTable("hold_back", {
   /** First day of the month. */
   month: date("month").primaryKey(),

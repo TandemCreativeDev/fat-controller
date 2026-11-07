@@ -1,6 +1,6 @@
 "use server"
 
-import { and, eq } from "drizzle-orm"
+import { and, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
@@ -16,6 +16,7 @@ import {
   holdBack,
   invoiceExpectation,
   person,
+  runningCostOneOff,
 } from "@/db/schema"
 import { addDays, londonDate } from "@/lib/forecast"
 import {
@@ -33,6 +34,40 @@ import { requireDirector } from "@/lib/session"
 const refresh = () => revalidatePath("/forecast")
 const form = (data: FormData) => Object.fromEntries(data)
 const saved: FormState = { ok: true, message: "Saved." }
+
+// ------------------------------------------------------------------ running costs
+
+const oneOffForm = z.object({
+  sourceIds: z.array(z.string().min(1)).min(1).max(500),
+  oneOff: z.enum(["true", "false"]),
+})
+
+/** Mark running costs as one-offs, or back again. They stay in the bank figures. */
+export async function saveRunningCostOneOff(
+  _prev: FormState,
+  data: FormData
+): Promise<FormState> {
+  const director = await requireDirector()
+  const parsed = oneOffForm.safeParse({
+    sourceIds: data.getAll("sourceId"),
+    oneOff: data.get("oneOff"),
+  })
+  if (!parsed.success) return { ok: false, message: firstError(parsed.error) }
+  const { sourceIds, oneOff } = parsed.data
+  if (oneOff === "true")
+    await db
+      .insert(runningCostOneOff)
+      .values(
+        sourceIds.map((sourceId) => ({ sourceId, createdBy: director.id }))
+      )
+      .onConflictDoNothing()
+  else
+    await db
+      .delete(runningCostOneOff)
+      .where(inArray(runningCostOneOff.sourceId, sourceIds))
+  refresh()
+  return saved
+}
 
 // ------------------------------------------------------------------ overrides
 
