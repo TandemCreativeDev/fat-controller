@@ -44,7 +44,7 @@ export function ItemList({
     .filter((g) => g.items.length > 0)
 
   return (
-    <div className="flex min-h-0 flex-col gap-3 rounded-lg border border-border bg-card/60 p-3 lg:sticky lg:top-20 lg:max-h-[calc(100svh-6rem)]">
+    <div className="flex min-h-0 flex-col gap-3 rounded-lg border border-border bg-card/60 p-3 max-lg:max-h-80 lg:sticky lg:top-20 lg:max-h-[calc(100svh-6rem)]">
       <div className="flex items-center gap-2">
         <Input
           type="search"
@@ -58,7 +58,7 @@ export function ItemList({
           scroll={false}
           aria-current={selected === "new" ? "true" : undefined}
           className={cn(
-            "shrink-0 rounded-md border border-input px-2.5 py-1.5 text-xs font-medium whitespace-nowrap hover:bg-muted",
+            "flex shrink-0 items-center rounded-md border border-input px-2.5 py-1.5 text-xs font-medium whitespace-nowrap hover:bg-muted max-md:min-h-11",
             selected === "new" && "border-violet-400/50 bg-violet-500/20"
           )}
         >
@@ -84,7 +84,7 @@ export function ItemList({
                     scroll={false}
                     aria-current={selected === i.id ? "true" : undefined}
                     className={cn(
-                      "grid grid-cols-[1fr_auto] gap-x-3 rounded-md px-2 py-1.5 text-sm hover:bg-muted/60",
+                      "grid grid-cols-[1fr_auto] gap-x-3 rounded-md px-2 py-1.5 text-sm hover:bg-muted/60 max-md:min-h-11",
                       selected === i.id &&
                         "bg-violet-500/20 ring-1 ring-violet-400/50"
                     )}

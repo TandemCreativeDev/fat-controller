@@ -10,7 +10,11 @@ import {
   type TimelineCategory,
   type TimelineRow,
 } from "@/lib/forecast"
-import { payoutBuckets, takeHomeNote } from "@/lib/forecast-buckets"
+import {
+  clientAnchor,
+  payoutBuckets,
+  takeHomeNote,
+} from "@/lib/forecast-buckets"
 import {
   CATEGORY_COLOUR,
   NEUTRAL_COLOUR,
@@ -63,6 +67,8 @@ export type SumRow = {
   colour: string
   /** Where to see what's behind this row. */
   href?: string
+  /** Where tapping the row goes on mobile, when the whole row is a link. */
+  mobileHref?: string
 }
 
 /** One month as a sum: what came in, what went out, and what that leaves. */
@@ -223,6 +229,7 @@ export type OverviewBucket = MonthSum & {
   payoutDate: string
   /** Opening less closing balance: what the bank adds to the payout, or keeps. */
   fromBank: string
+  opening: string
   takeHome: string
   /** What the take-home is made of, in words. */
   takeHomeNote: string
@@ -247,9 +254,10 @@ export function overviewBuckets(
       ...monthSum(
         m.month,
         [
-          ...clients[i].segments.map((s) =>
-            row(s.key, s.label, s.amount, s.colour)
-          ),
+          ...clients[i].segments.map((s) => ({
+            ...row(s.key, s.label, s.amount, s.colour),
+            mobileHref: `/forecast?tab=money-in&month=${m.month.slice(0, 7)}#${clientAnchor(s.label, m.month)}`,
+          })),
           row(
             "backstop",
             "From tax reserve",
@@ -265,24 +273,30 @@ export function overviewBuckets(
           ),
         ],
         [
-          row(
-            "contractors",
-            "Contractors",
-            new D(m.contractorBills).abs(),
-            CATEGORY_COLOUR.contractors
-          ),
+          {
+            ...row(
+              "contractors",
+              "Contractors",
+              new D(m.contractorBills).abs(),
+              CATEGORY_COLOUR.contractors
+            ),
+            mobileHref: `/forecast?tab=bills&month=${m.month.slice(0, 7)}`,
+          },
           row(
             "set_asides",
             "Tax set-asides",
             new D(m.setAsides).abs(),
             CATEGORY_COLOUR.set_asides
           ),
-          row(
-            "running",
-            "Running costs",
-            new D(m.runningCosts).abs(),
-            CATEGORY_COLOUR.running
-          ),
+          {
+            ...row(
+              "running",
+              "Running costs",
+              new D(m.runningCosts).abs(),
+              CATEGORY_COLOUR.running
+            ),
+            mobileHref: `/forecast?tab=running-costs&month=${m.month.slice(0, 7)}`,
+          },
           row(
             "vat",
             "VAT payments",
@@ -305,6 +319,7 @@ export function overviewBuckets(
       ),
       payoutDate: m.payoutDate,
       fromBank: money(new D(m.opening).minus(m.closing)),
+      opening: m.opening,
       takeHome: m.takeHomePerDirector,
       takeHomeNote: takeHomeNote(result, m.takeHomePerDirector, formatMoney),
       payout: money(new D(m.directorPay).abs()),
@@ -327,6 +342,11 @@ export function overviewBuckets(
 
 export type BillCard = {
   bill: BillPlan
+  /**
+   * Entered from a real bill; calculated from time already tracked, for work
+   * that's finished; or forecast, for work that's still to come.
+   */
+  kind: "entered" | "calculated" | "forecast"
   /** The pay date: actual, planned or expected. Null if after the months shown. */
   payOn: string | null
   late: boolean
@@ -340,6 +360,7 @@ export type BillBucket = {
   /** The engine's contractor bills figure for the month, as a positive amount. */
   total: string
   entered: string
+  calculated: string
   forecast: string
   /** Contractor payments already made this month, which aren't listed as to pay. */
   alreadyPaid: string
@@ -363,6 +384,11 @@ const billCard = (result: Ready, bill: BillPlan): BillCard => {
   const payOn = bill.paidOn ?? bill.expectedPayOn
   return {
     bill,
+    kind: bill.id
+      ? "entered"
+      : bill.periodEnd < result.today
+        ? "calculated"
+        : "forecast",
     payOn,
     late: payOn !== null && payOn > bill.dueOn,
     basis: bill.id ? "Entered from the bill" : "From tracked hours",
@@ -383,9 +409,10 @@ export function billBuckets(result: Ready): BillBuckets {
     )
     const total = new D(m.contractorBills).abs()
     const add = (list: BillCard[]) => sum(list.map((c) => new D(c.bill.amount)))
-    const entered = add(cards.filter((c) => c.bill.id))
-    const forecast = add(cards.filter((c) => !c.bill.id))
-    const alreadyPaid = total.minus(entered).minus(forecast)
+    const entered = add(cards.filter((c) => c.kind === "entered"))
+    const calculated = add(cards.filter((c) => c.kind === "calculated"))
+    const forecast = add(cards.filter((c) => c.kind === "forecast"))
+    const alreadyPaid = total.minus(entered).minus(calculated).minus(forecast)
 
     const items = result.contractors.flatMap((name) => {
       const mine = cards.filter((c) => c.bill.personName === name)
@@ -425,6 +452,7 @@ export function billBuckets(result: Ready): BillBuckets {
       count: cards.length,
       total: money(total),
       entered: money(entered),
+      calculated: money(calculated),
       forecast: money(forecast),
       alreadyPaid: money(alreadyPaid),
       parts: partsOf(total, items),

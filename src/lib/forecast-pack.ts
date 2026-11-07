@@ -390,7 +390,7 @@ export function buildForecastPack(d: ForecastPackInput): string {
   const bills = billBuckets(result)
   const billRow = (c: (typeof bills.paid)[number]) => [
     c.bill.personName,
-    c.bill.id ? "entered" : "forecast",
+    c.kind,
     c.bill.amount,
     c.payOn,
     c.bill.dueOn,
@@ -417,13 +417,13 @@ export function buildForecastPack(d: ForecastPackInput): string {
     "Paid amount",
   ]
   out.push(
-    "## Contractor bills\n\nBy the month each bill is paid or expected to be paid. `Entered` bills are stored; `forecast` ones are calculated from tracked and forecast time.\n\n" +
+    "## Contractor bills\n\nBy the month each bill is paid or expected to be paid. `entered` bills are stored; `calculated` ones come from tracked time for finished work; `forecast` ones include time still to come.\n\n" +
       [
         ...bills.months.map((b) =>
           [
             `### ${b.month.slice(0, 7)}: ${b.total} to contractors, ${b.count} bills`,
             "",
-            `- **Entered:** ${b.entered}. **Forecast:** ${b.forecast}. **Already paid:** ${b.alreadyPaid}.`,
+            `- **Entered:** ${b.entered}. **Calculated:** ${b.calculated}. **Forecast:** ${b.forecast}. **Already paid:** ${b.alreadyPaid}.`,
             `- **Split:** ${b.parts.map((p) => `${p.label} ${p.amount} (${p.percentLabel}%)`).join(", ") || "none"}`,
             `- **Balance on pay days:** ${b.danger ? `goes to ${b.danger.balance} after ${b.danger.personName} is paid on ${b.danger.date}` : "covered on every pay day"}`,
             "",

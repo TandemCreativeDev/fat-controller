@@ -109,3 +109,12 @@ export function formatBalance(amount: string): string {
   const n = Number(amount)
   return `${n < 0 ? "−" : ""}${formatMoney(String(Math.abs(n)))}`
 }
+
+/** "Nov": just the month, short. */
+export function formatMonthShort(isoDate: string): string {
+  const [y, m] = isoDate.split("-").map(Number)
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-GB", {
+    month: "short",
+    timeZone: "UTC",
+  })
+}

@@ -11,7 +11,9 @@ export default async function SettingsLayout({
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Settings" />
-      <SettingsTabs />
+      <div>
+        <SettingsTabs />
+      </div>
       {children}
     </div>
   )

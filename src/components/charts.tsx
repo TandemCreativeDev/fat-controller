@@ -11,10 +11,15 @@ import {
   LineChart,
   Pie,
   PieChart,
+  ReferenceArea,
+  ReferenceDot,
   ReferenceLine,
   XAxis,
   YAxis,
 } from "recharts"
+
+import { useMonth } from "@/components/month-context"
+import { useIsMobile } from "@/hooks/use-is-mobile"
 
 import {
   ChartContainer,
@@ -328,9 +333,22 @@ export function BalanceLine({
     forecast: { label: "Forecast", color: SERIES_COLORS[0] },
   }
   const labelFor = new Map(data.map((d) => [d.date, d.label]))
+  const mobile = useIsMobile()
+  const month = useMonth()?.selected.slice(0, 7)
+  const inView =
+    mobile && month ? data.filter((d) => d.date.startsWith(month)) : []
+  const last = mobile ? data.at(-1) : undefined
+  const lastValue = last ? (last.forecast ?? last.actual) : null
   return (
-    <ChartContainer config={config} className={cn("h-64 w-full", className)}>
-      <LineChart data={data} margin={{ left: 4, right: 8, top: 16 }}>
+    <ChartContainer
+      config={config}
+      data-no-swipe
+      className={cn("h-64 w-full", className)}
+    >
+      <LineChart
+        data={data}
+        margin={{ left: 4, right: mobile ? 12 : 8, top: 16 }}
+      >
         <CartesianGrid vertical={false} stroke="rgb(255 255 255 / 0.06)" />
         <XAxis
           dataKey="date"
@@ -340,10 +358,33 @@ export function BalanceLine({
         />
         <YAxis
           {...axisProps}
-          width={64}
+          width={mobile ? 48 : 64}
           tickFormatter={(v: number) => formatGbp(v)}
         />
+        {inView.length > 0 && (
+          <ReferenceArea
+            x1={inView[0].date}
+            x2={inView.at(-1)!.date}
+            fill="rgb(139 92 246 / 0.15)"
+            stroke="none"
+          />
+        )}
         <ReferenceLine y={0} stroke="rgb(255 255 255 / 0.2)" />
+        {last && lastValue !== null && (
+          <ReferenceDot
+            x={last.date}
+            y={lastValue}
+            r={3}
+            fill="var(--color-forecast)"
+            stroke="none"
+            label={{
+              value: formatGbp(lastValue),
+              position: "insideBottomRight",
+              fill: "var(--foreground)",
+              fontSize: 12,
+            }}
+          />
+        )}
         <ReferenceLine
           x={today}
           stroke="rgb(255 255 255 / 0.35)"

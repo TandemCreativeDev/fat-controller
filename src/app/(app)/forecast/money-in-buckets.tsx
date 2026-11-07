@@ -1,9 +1,11 @@
 "use client"
 
 import { Plus } from "lucide-react"
-import { startTransition, useState } from "react"
+import { startTransition, useEffect, useRef, useState } from "react"
 
 import { ActionForm } from "@/components/action-form"
+import { EditSurface } from "@/components/bottom-sheet"
+import { MonthPane, MonthSwipe, useMonth } from "@/components/month-context"
 import { Field } from "@/components/form-fields"
 import { Dot, SplitBar, SplitLegend } from "@/components/split-bar"
 import { Badge } from "@/components/ui/badge"
@@ -16,7 +18,9 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import { useIsMobile } from "@/hooks/use-is-mobile"
 import type { MoneyInRow } from "@/lib/forecast"
+import { clientAnchor } from "@/lib/forecast-buckets"
 import type {
   BucketInvoice,
   ClientGroup,
@@ -27,6 +31,7 @@ import {
   formatDayShort,
   formatMoney,
   formatMonthName,
+  formatMonthShort,
 } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import {
@@ -54,7 +59,7 @@ export function CustomInvoiceFields({
         id={`custom-label-${id}`}
         name="label"
         label="What it's for"
-        className="w-56"
+        className="w-56 max-md:w-full"
         defaultValue={row?.label}
         required
       />
@@ -63,7 +68,7 @@ export function CustomInvoiceFields({
         name="amountGbp"
         label="Amount before VAT (£)"
         inputMode="decimal"
-        className="w-36"
+        className="w-36 max-md:w-full"
         defaultValue={row?.amount}
         required
       />
@@ -72,7 +77,7 @@ export function CustomInvoiceFields({
         name="contractorCostGbp"
         label="Contractor cost (£)"
         inputMode="decimal"
-        className="w-32"
+        className="w-32 max-md:w-full"
         defaultValue={row?.cost}
       />
       <Field
@@ -80,7 +85,7 @@ export function CustomInvoiceFields({
         name="landsOn"
         label="Due"
         type="date"
-        className="w-40"
+        className="w-40 max-md:w-full"
         defaultValue={row?.landsOn}
         required
       />
@@ -88,7 +93,7 @@ export function CustomInvoiceFields({
         id={`custom-note-${id}`}
         name="note"
         label="Note"
-        className="w-48"
+        className="w-48 max-md:w-full"
         defaultValue={row?.note ?? ""}
       />
     </>
@@ -98,12 +103,12 @@ export function CustomInvoiceFields({
 function Editor({ row }: { row: MoneyInRow }) {
   if (row.custom)
     return (
-      <div className="flex flex-wrap items-end gap-3 py-2">
+      <div className="flex flex-wrap items-end gap-3 py-2 max-md:flex-col max-md:items-stretch">
         <ActionForm
           action={saveCustomInvoice}
           submit="Save"
           variant="outline"
-          className="flex-row flex-wrap items-end"
+          className="flex-row flex-wrap items-end max-md:flex-col max-md:items-stretch"
         >
           <CustomInvoiceFields
             row={{
@@ -117,20 +122,21 @@ function Editor({ row }: { row: MoneyInRow }) {
           action={deleteCustomInvoice}
           submit="Delete"
           variant="ghost"
+          className="max-md:order-first"
         >
           <input type="hidden" name="id" value={row.custom.id} />
         </ActionForm>
       </div>
     )
   return (
-    <div className="flex flex-wrap items-end gap-6 py-2">
+    <div className="flex flex-wrap items-end gap-6 py-2 max-md:flex-col max-md:items-stretch">
       {row.canOverride && row.projectId && (
-        <div className="flex items-end gap-2">
+        <div className="flex items-end gap-2 max-md:flex-col max-md:items-stretch">
           <ActionForm
             action={saveOverride}
             submit="Set days or amount"
             variant="outline"
-            className="flex-row flex-wrap items-end"
+            className="flex-row flex-wrap items-end max-md:flex-col max-md:items-stretch"
           >
             <input type="hidden" name="projectId" value={row.projectId} />
             <input type="hidden" name="periodEnd" value={row.invoiceDate} />
@@ -139,7 +145,7 @@ function Editor({ row }: { row: MoneyInRow }) {
               name="days"
               label="Days"
               inputMode="decimal"
-              className="w-20"
+              className="w-20 max-md:w-full"
               defaultValue={row.overrideDays ?? ""}
             />
             <Field
@@ -147,14 +153,14 @@ function Editor({ row }: { row: MoneyInRow }) {
               name="amountGbp"
               label="or amount (£)"
               inputMode="decimal"
-              className="w-28"
+              className="w-28 max-md:w-full"
               defaultValue={row.overrideAmount ?? ""}
             />
             <Field
               id={`override-note-${row.key}`}
               name="note"
               label="Note"
-              className="w-40"
+              className="w-40 max-md:w-full"
               defaultValue={row.overrideNote ?? ""}
             />
           </ActionForm>
@@ -171,7 +177,7 @@ function Editor({ row }: { row: MoneyInRow }) {
           action={saveExpectation}
           submit="Set due date"
           variant="outline"
-          className="flex-row flex-wrap items-end"
+          className="flex-row flex-wrap items-end max-md:flex-col max-md:items-stretch"
         >
           <input type="hidden" name="invoiceKey" value={row.key} />
           <input
@@ -184,14 +190,14 @@ function Editor({ row }: { row: MoneyInRow }) {
             name="expectedOn"
             label={`Expected (due ${formatDayName(row.dueDate)})`}
             type="date"
-            className="w-40"
+            className="w-40 max-md:w-full"
             defaultValue={row.expectedOn ?? ""}
           />
           <Field
             id={`landing-note-${row.key}`}
             name="note"
             label="Note"
-            className="w-40"
+            className="w-40 max-md:w-full"
             defaultValue={row.note ?? ""}
           />
         </ActionForm>
@@ -229,11 +235,7 @@ function StatusPill({ invoice }: { invoice: BucketInvoice }) {
   const { kind, row } = invoice
   const number = row.invoiceNumber ? ` · ${row.invoiceNumber}` : ""
   if (kind === "raised")
-    return (
-      <Badge variant="outline" className="border-success text-success">
-        Raised{number}
-      </Badge>
-    )
+    return <Badge className="bg-success text-background">Raised{number}</Badge>
   if (kind === "overdue")
     return (
       <Badge variant="outline" className="border-destructive text-destructive">
@@ -262,6 +264,7 @@ function InvoiceCard({
   onToggle: () => void
 }) {
   const { row, kind } = invoice
+  const mobile = useIsMobile()
   return (
     <li
       className={cn(
@@ -272,11 +275,22 @@ function InvoiceCard({
           "border-solid border-destructive/60 bg-destructive/5",
         !row.included && "opacity-50"
       )}
+      // On mobile, the whole card opens the editor. Its controls keep their own job.
+      onClick={(e) => {
+        const target = e.target as Element
+        if (
+          mobile &&
+          !open &&
+          e.currentTarget.contains(target) &&
+          !target.closest("button, a, input, label, [role=checkbox]")
+        )
+          onToggle()
+      }}
     >
       <div className="flex items-start gap-2">
         <IncludeBox row={row} month={month} />
         <div className="min-w-0 flex-1">
-          <p className="font-medium">{invoice.title}</p>
+          <p className="font-medium max-md:line-clamp-2">{invoice.title}</p>
           <div className="mt-1">
             <StatusPill invoice={invoice} />
           </div>
@@ -323,7 +337,9 @@ function InvoiceCard({
           Edit<span className="sr-only"> {invoice.title}</span>
         </Button>
       </div>
-      {open && <Editor row={row} />}
+      <EditSurface open={open} onClose={onToggle} title={invoice.title}>
+        <Editor row={row} />
+      </EditSurface>
     </li>
   )
 }
@@ -335,15 +351,18 @@ function ClientBlock({
   setOpenKey,
 }: {
   group: ClientGroup
-  month: string
+  month: { name: string; iso: string | null }
   openKey: string | null
   setOpenKey: (key: string | null) => void
 }) {
   return (
-    <section className="flex flex-col gap-2">
+    <section
+      id={month.iso ? clientAnchor(group.client, month.iso) : undefined}
+      className="flex scroll-mt-28 flex-col gap-2"
+    >
       <div className="flex items-start gap-2 text-sm">
         <Dot colour={group.colour} className="mt-1.5" />
-        <h4 className="min-w-0 flex-1 font-semibold">{group.client}</h4>
+        <h3 className="min-w-0 flex-1 font-semibold">{group.client}</h3>
         <p className="w-20 shrink-0 text-right tabular-nums">
           {formatMoney(group.total)}
         </p>
@@ -353,7 +372,7 @@ function ClientBlock({
           <InvoiceCard
             key={i.row.key}
             invoice={i}
-            month={month}
+            month={month.name}
             open={openKey === i.row.key}
             onToggle={() =>
               setOpenKey(openKey === i.row.key ? null : i.row.key)
@@ -376,18 +395,44 @@ function Bucket({
 }) {
   const monthName = bucket.month ? formatMonthName(bucket.month) : "Later"
   const empty = bucket.clients.length === 0
+  const header = useRef<HTMLElement>(null)
+  const [scrolledPast, setScrolledPast] = useState(false)
+  const inView = useMonth()?.selected === bucket.month
+  useEffect(() => {
+    if (!header.current || !inView) return
+    const watcher = new IntersectionObserver(
+      ([entry]) =>
+        setScrolledPast(
+          !entry.isIntersecting && entry.boundingClientRect.top < 0
+        ),
+      { rootMargin: "-100px 0px 0px 0px" }
+    )
+    watcher.observe(header.current)
+    return () => watcher.disconnect()
+  }, [inView])
   return (
-    <section className="flex min-w-0 flex-col gap-4 rounded-lg border border-border bg-muted/40 p-4">
-      <header className="flex flex-col gap-2 border-b border-border pb-3">
+    <section className="flex w-full min-w-0 flex-col gap-4 rounded-lg border border-border bg-muted/40 p-3 md:p-4">
+      {inView && scrolledPast && bucket.month && (
+        // Fixed, so appearing never moves anything on the page.
+        <p className="fixed inset-x-0 top-[6.5rem] z-10 border-b border-border bg-background/95 px-4 py-2 text-sm font-medium tabular-nums backdrop-blur-md md:hidden">
+          {formatMonthShort(bucket.month)}
+          {bucket.takeHome && ` · ${formatMoney(bucket.takeHome)} each`} ·{" "}
+          {formatMoney(bucket.totalIn)} in
+        </p>
+      )}
+      <header
+        ref={header}
+        className="flex flex-col gap-2 border-b border-border pb-3"
+      >
         <div className="flex items-baseline justify-between gap-2">
-          <h3 className="font-heading text-base font-semibold">
+          <h2 className="font-heading text-base font-semibold">
             {monthName}
             {bucket.payoutDate && (
               <span className="ml-2 text-sm font-normal text-muted-foreground">
                 paid {formatDayName(bucket.payoutDate)}
               </span>
             )}
-          </h3>
+          </h2>
         </div>
         <div className="flex flex-wrap items-end justify-between gap-2">
           {bucket.takeHome && (
@@ -426,7 +471,7 @@ function Bucket({
           <ClientBlock
             key={g.client}
             group={g}
-            month={monthName}
+            month={{ name: monthName, iso: bucket.month }}
             openKey={openKey}
             setOpenKey={setOpenKey}
           />
@@ -459,14 +504,19 @@ export function MoneyInBuckets({
           size="sm"
           aria-expanded={adding}
           onClick={() => setAdding(!adding)}
+          className="fixed right-4 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 max-md:bg-primary! max-md:text-primary-foreground! max-md:shadow-lg md:static"
         >
           <Plus aria-hidden />
           One-off invoice
         </Button>
       </CardHeader>
-      <CardContent className="flex flex-col gap-6">
-        {adding && (
-          <div className="rounded-lg border border-border p-3">
+      <CardContent className="flex flex-col gap-6 max-md:px-2">
+        <EditSurface
+          open={adding}
+          onClose={() => setAdding(false)}
+          title="One-off invoice"
+        >
+          <div className="rounded-lg border border-border p-3 max-md:border-0 max-md:p-0">
             <p className="mb-3 text-sm text-muted-foreground">
               For work only you know about yet. It counts like any invoice, with
               a set-aside. Delete it when the real invoice is in Xero, or
@@ -476,22 +526,19 @@ export function MoneyInBuckets({
               action={saveCustomInvoice}
               submit="Add to forecast"
               resetOnSuccess
-              className="flex-row flex-wrap items-end"
+              className="flex-row flex-wrap items-end max-md:flex-col max-md:items-stretch"
             >
               <CustomInvoiceFields />
             </ActionForm>
           </div>
-        )}
-        <div className="grid gap-4 lg:grid-cols-3">
+        </EditSurface>
+        <MonthSwipe className="grid gap-4 lg:grid-cols-3">
           {months.map((b) => (
-            <Bucket
-              key={b.month}
-              bucket={b}
-              openKey={openKey}
-              setOpenKey={setOpenKey}
-            />
+            <MonthPane key={b.month} month={b.month!} className="flex">
+              <Bucket bucket={b} openKey={openKey} setOpenKey={setOpenKey} />
+            </MonthPane>
           ))}
-        </div>
+        </MonthSwipe>
         {later && (
           <details className="border-t border-border pt-4">
             <summary className="cursor-pointer text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
@@ -502,7 +549,7 @@ export function MoneyInBuckets({
                 <ClientBlock
                   key={g.client}
                   group={g}
-                  month="a later"
+                  month={{ name: "a later", iso: null }}
                   openKey={openKey}
                   setOpenKey={setOpenKey}
                 />

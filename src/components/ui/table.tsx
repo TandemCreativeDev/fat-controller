@@ -3,13 +3,35 @@
 import * as React from "react"
 import { cn } from "cn"
 
+/** Gives each cell its column's name, which the stacked mobile layout shows beside it. */
+function labelCells(table: HTMLTableElement) {
+  const names = [...table.querySelectorAll("thead th")].map(
+    (th) => th.textContent ?? ""
+  )
+  for (const row of table.querySelectorAll("tbody tr, tfoot tr"))
+    [...row.children].forEach((cell, i) => {
+      if (!cell.hasAttribute("colspan"))
+        cell.setAttribute("data-label", names[i] ?? "")
+    })
+}
+
 function Table({ className, ...props }: React.ComponentProps<"table">) {
+  const ref = React.useRef<HTMLTableElement>(null)
+  React.useEffect(() => {
+    const table = ref.current
+    if (!table) return
+    labelCells(table)
+    const watcher = new MutationObserver(() => labelCells(table))
+    watcher.observe(table, { childList: true, subtree: true })
+    return () => watcher.disconnect()
+  }, [])
   return (
     <div
       data-slot="table-container"
       className="relative w-full overflow-x-auto"
     >
       <table
+        ref={ref}
         data-slot="table"
         className={cn("w-full caption-bottom text-sm", className)}
         {...props}

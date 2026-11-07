@@ -24,7 +24,7 @@ export function PeriodSwitch({
             href={p.key === "lifetime" ? path : `${path}?period=${p.key}`}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "rounded-lg px-2.5 py-1 font-medium text-muted-foreground transition-colors hover:text-foreground",
+              "flex items-center rounded-lg px-2.5 py-1 font-medium text-muted-foreground transition-colors hover:text-foreground max-md:min-h-11",
               active &&
                 "bg-violet-500/20 text-violet-100 ring-1 ring-violet-400/50"
             )}

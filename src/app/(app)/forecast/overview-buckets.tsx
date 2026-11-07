@@ -1,3 +1,4 @@
+import { ChevronRight } from "lucide-react"
 import Link from "next/link"
 
 import { Dot } from "@/components/split-bar"
@@ -9,7 +10,6 @@ import {
   formatMoney,
   formatMonth,
   formatMonthName,
-  formatSigned,
 } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -29,14 +29,14 @@ function SumSection({
   return (
     <section className="flex flex-col gap-2">
       <header className="flex items-baseline justify-between gap-2">
-        <h4
+        <h3
           className={cn(
             "text-xs font-semibold tracking-[0.08em] uppercase",
             tone === "in" ? "text-success" : "text-muted-foreground"
           )}
         >
           {title}
-        </h4>
+        </h3>
         <p
           className={cn(
             figure,
@@ -44,26 +44,46 @@ function SumSection({
             tone === "in" && "text-success"
           )}
         >
-          {tone === "in" ? "+" : "−"}
           {formatMoney(total)}
         </p>
       </header>
       {rows.length > 0 ? (
         <ul className="flex flex-col gap-1.5 text-sm">
           {rows.map((r) => (
-            <li key={r.key} className="flex items-baseline gap-2">
-              <Dot colour={r.colour} className="self-center" />
-              {r.href ? (
+            <li key={r.key}>
+              {(r.mobileHref ?? r.href) && (
                 <Link
-                  href={r.href}
-                  className="min-w-0 flex-1 underline decoration-muted-foreground underline-offset-4 hover:decoration-foreground"
+                  href={(r.mobileHref ?? r.href)!}
+                  className="flex min-h-11 items-center gap-2 md:hidden"
                 >
-                  {r.label}
+                  <Dot colour={r.colour} />
+                  <span className="min-w-0 flex-1">{r.label}</span>
+                  <span className={figure}>{formatMoney(r.amount)}</span>
+                  <ChevronRight
+                    aria-hidden
+                    className="size-4 shrink-0 text-muted-foreground"
+                  />
                 </Link>
-              ) : (
-                <span className="min-w-0 flex-1">{r.label}</span>
               )}
-              <span className={figure}>{formatMoney(r.amount)}</span>
+              <div
+                className={cn(
+                  "items-baseline gap-2",
+                  r.mobileHref || r.href ? "hidden md:flex" : "flex"
+                )}
+              >
+                <Dot colour={r.colour} className="self-center" />
+                {r.href ? (
+                  <Link
+                    href={r.href}
+                    className="min-w-0 flex-1 underline decoration-muted-foreground underline-offset-4 hover:decoration-foreground"
+                  >
+                    {r.label}
+                  </Link>
+                ) : (
+                  <span className="min-w-0 flex-1">{r.label}</span>
+                )}
+                <span className={figure}>{formatMoney(r.amount)}</span>
+              </div>
             </li>
           ))}
         </ul>
@@ -78,19 +98,23 @@ function MonthCard({
   title,
   note,
   sum,
+  top,
   children,
 }: {
   title: string
   note: string
   sum: MonthSum
+  /** Shown straight under the title on mobile. */
+  top?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
-    <article className="flex min-w-0 flex-col gap-5 rounded-lg border border-border bg-muted/40 p-5">
+    <article className="flex min-w-0 flex-col gap-5 rounded-lg border border-border bg-muted/40 p-3 md:p-5">
       <header className="flex items-baseline justify-between gap-2">
-        <h3 className="font-heading text-xl font-semibold">{title}</h3>
+        <h2 className="font-heading text-xl font-semibold">{title}</h2>
         <p className="text-right text-xs text-muted-foreground">{note}</p>
       </header>
+      {top && <div className="flex flex-col gap-1 md:hidden">{top}</div>}
       <SumSection
         title="Money in"
         total={sum.moneyInTotal}
@@ -158,18 +182,11 @@ function Headline({
 
 /** One month: what came in, what went out, and what each director takes home. */
 export function OverviewBucketCard({ bucket }: { bucket: OverviewBucket }) {
-  const fromBank = Number(bucket.fromBank)
-  return (
-    <MonthCard
-      title={formatMonthName(bucket.month)}
-      note={`payout ${formatDayName(bucket.payoutDate)}`}
-      sum={bucket}
-    >
-      <Line label="Left from the month" value={formatBalance(bucket.left)} />
-      <Line
-        label={fromBank < 0 ? "Kept in the bank" : "Plus from the bank"}
-        value={formatSigned(bucket.fromBank)}
-      />
+  const bankLabel =
+    Number(bucket.fromBank) < 0 ? "Kept in the bank" : "Plus from the bank"
+  const bankAmount = formatBalance(bucket.fromBank.replace("-", ""))
+  const headline = (
+    <>
       <Headline
         label="Take-home each"
         sub={`${formatMoney(bucket.payout)} between directors`}
@@ -178,6 +195,30 @@ export function OverviewBucketCard({ bucket }: { bucket: OverviewBucket }) {
       <p className="text-xs text-foreground tabular-nums">
         {bucket.takeHomeNote}
       </p>
+    </>
+  )
+  return (
+    <MonthCard
+      title={formatMonthName(bucket.month)}
+      note={`payout ${formatDayName(bucket.payoutDate)}`}
+      sum={bucket}
+      top={headline}
+    >
+      <Line label="Left from the month" value={formatBalance(bucket.left)} />
+      <div className="hidden md:block">
+        <Line label={bankLabel} value={bankAmount} />
+      </div>
+      <details className="md:hidden">
+        <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-2 text-sm text-muted-foreground">
+          <span>{bankLabel}</span>
+          <span className={cn(figure, "text-foreground")}>{bankAmount}</span>
+        </summary>
+        <p className="pb-2 text-xs text-muted-foreground tabular-nums">
+          Starts with {formatBalance(bucket.opening)}, ends with{" "}
+          {formatBalance(bucket.closing)}
+        </p>
+      </details>
+      <div className="hidden flex-col gap-2 md:flex">{headline}</div>
       <p className="text-xs text-muted-foreground">
         Leaves {formatBalance(bucket.closing)} in the bank
         {bucket.holdBack &&

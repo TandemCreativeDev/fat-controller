@@ -1,46 +1,22 @@
 "use client"
 
-import Link from "next/link"
 import { usePathname } from "next/navigation"
 
-import { cn } from "@/lib/utils"
+import { SectionTabs } from "@/components/section-tabs"
 
 const TABS = [
-  { href: "/settings", label: "Connections" },
-  { href: "/settings/rules", label: "Rules" },
-  { href: "/settings/projects", label: "Projects" },
-  { href: "/settings/people", label: "People" },
-  { href: "/settings/accounts", label: "Accounts" },
-  { href: "/settings/password", label: "Password" },
+  { key: "/settings", href: "/settings", label: "Connections" },
+  { key: "/settings/rules", href: "/settings/rules", label: "Rules" },
+  { key: "/settings/projects", href: "/settings/projects", label: "Projects" },
+  { key: "/settings/people", href: "/settings/people", label: "People" },
+  { key: "/settings/accounts", href: "/settings/accounts", label: "Accounts" },
+  { key: "/settings/password", href: "/settings/password", label: "Password" },
 ]
 
 export function SettingsTabs() {
   const pathname = usePathname()
-  return (
-    <nav
-      aria-label="Settings sections"
-      className="flex flex-wrap gap-1 rounded-xl bg-black/30 p-1 text-sm ring-1 ring-violet-500/60"
-    >
-      {TABS.map((t) => {
-        const active =
-          t.href === "/settings"
-            ? pathname === "/settings"
-            : pathname.startsWith(t.href)
-        return (
-          <Link
-            key={t.href}
-            href={t.href}
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              "rounded-lg px-3 py-1.5 font-medium text-muted-foreground hover:text-foreground",
-              active &&
-                "bg-violet-500/20 text-violet-100 ring-1 ring-violet-400/50"
-            )}
-          >
-            {t.label}
-          </Link>
-        )
-      })}
-    </nav>
-  )
+  const active =
+    TABS.find((t) => t.key !== "/settings" && pathname.startsWith(t.key))
+      ?.key ?? "/settings"
+  return <SectionTabs label="Settings sections" tabs={TABS} active={active} />
 }

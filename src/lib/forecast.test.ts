@@ -2807,3 +2807,18 @@ describe("running cost tally", () => {
     expect(charges.map((c) => c.amount)).toEqual(["-4.00", "15.00"])
   })
 })
+
+describe("bill kinds", () => {
+  const kindOf = (periodEnd: string, id: string | null) => {
+    const r = run(baseInput())
+    const bill = { ...r.bills[0], status: "unpaid" as const, periodEnd, id }
+    const { months, later } = billBuckets({ ...r, bills: [bill] })
+    return [...months.flatMap((m) => m.cards), ...later][0].kind
+  }
+
+  it("calls a bill for finished work calculated, not forecast", () => {
+    expect(kindOf("2026-05-20", null)).toBe("calculated")
+    expect(kindOf("2026-06-20", null)).toBe("forecast")
+    expect(kindOf("2026-05-20", "stored")).toBe("entered")
+  })
+})

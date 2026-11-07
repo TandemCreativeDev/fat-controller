@@ -1,5 +1,6 @@
 "use client"
 
+import { Copy } from "lucide-react"
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
@@ -17,7 +18,10 @@ export function CopyButton({ text }: { text: string }) {
         setTimeout(() => setCopied(false), 2000)
       }}
     >
-      {copied ? "Copied" : "Copy for chat"}
+      <Copy aria-hidden className="md:hidden" />
+      <span className="max-md:sr-only">
+        {copied ? "Copied" : "Copy for chat"}
+      </span>
     </Button>
   )
 }

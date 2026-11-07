@@ -4,6 +4,8 @@ import { Plus } from "lucide-react"
 import { useState } from "react"
 
 import { ActionForm } from "@/components/action-form"
+import { EditSurface } from "@/components/bottom-sheet"
+import { MonthPane, MonthSwipe } from "@/components/month-context"
 import { Field, SelectField } from "@/components/form-fields"
 import { Dot, SplitBar, SplitLegend } from "@/components/split-bar"
 import { Badge } from "@/components/ui/badge"
@@ -57,12 +59,12 @@ function BillIdentity({ bill }: { bill: BillPlan }) {
 function PlanForm({ bill }: { bill: BillPlan }) {
   const key = `${bill.personId}-${bill.issuedOn}`
   return (
-    <div className="flex flex-wrap items-end gap-3 border-t border-border pt-3">
+    <div className="flex flex-wrap items-end gap-3 border-t border-border pt-3 max-md:flex-col max-md:items-stretch max-md:border-0 max-md:pt-0">
       <ActionForm
         action={planBill}
         submit="Set plan"
         variant="outline"
-        className="flex-row flex-wrap items-end"
+        className="flex-row flex-wrap items-end max-md:flex-col max-md:items-stretch"
       >
         <BillIdentity bill={bill} />
         <Field
@@ -70,7 +72,7 @@ function PlanForm({ bill }: { bill: BillPlan }) {
           name="payOrder"
           label="Pay order"
           type="number"
-          className="w-20"
+          className="w-20 max-md:w-full"
           defaultValue={bill.payOrder ?? ""}
         />
         <Field
@@ -78,12 +80,17 @@ function PlanForm({ bill }: { bill: BillPlan }) {
           name="plannedPayOn"
           label="Planned date"
           type="date"
-          className="w-40"
+          className="w-40 max-md:w-full"
           defaultValue={bill.plannedPayOn ?? ""}
         />
       </ActionForm>
       {bill.id && (
-        <ActionForm action={deleteBill} submit="Delete bill" variant="ghost">
+        <ActionForm
+          action={deleteBill}
+          submit="Delete bill"
+          variant="ghost"
+          className="max-md:order-first"
+        >
           <input type="hidden" name="id" value={bill.id} />
         </ActionForm>
       )}
@@ -95,12 +102,12 @@ function PaidForm({ bill, payments }: { bill: BillPlan; payments: Payment[] }) {
   const key = `${bill.personId}-${bill.issuedOn}`
   const mine = payments.filter((p) => p.personId === bill.personId)
   return (
-    <div className="border-t border-border pt-3">
+    <div className="border-t border-border pt-3 max-md:border-0 max-md:pt-0">
       <ActionForm
         action={markBillPaid}
         submit="Save as paid"
         variant="outline"
-        className="flex-row flex-wrap items-end"
+        className="flex-row flex-wrap items-end max-md:flex-col max-md:items-stretch"
       >
         <BillIdentity bill={bill} />
         <Field
@@ -108,7 +115,7 @@ function PaidForm({ bill, payments }: { bill: BillPlan; payments: Payment[] }) {
           name="paidOn"
           label="Paid on"
           type="date"
-          className="w-40"
+          className="w-40 max-md:w-full"
           required
         />
         <SelectField
@@ -129,6 +136,12 @@ function PaidForm({ bill, payments }: { bill: BillPlan; payments: Payment[] }) {
 }
 
 type OpenEditor = { key: string; mode: "edit" | "paid" } | null
+
+const KIND_LABEL = {
+  entered: "Entered",
+  calculated: "Calculated",
+  forecast: "Forecast",
+}
 
 function BillCardView({
   card,
@@ -151,7 +164,9 @@ function BillCardView({
     <li
       className={cn(
         "flex flex-col gap-2 rounded-lg border bg-background/60 p-3 text-sm",
-        entered ? "border-border" : "border-dashed border-primary/60",
+        card.kind === "forecast"
+          ? "border-dashed border-primary/60"
+          : "border-border",
         card.late && "border-destructive/60 bg-destructive/5"
       )}
     >
@@ -160,9 +175,11 @@ function BillCardView({
         <p className="min-w-0 flex-1 font-medium">{bill.personName}</p>
         <Badge
           variant="outline"
-          className={cn(!entered && "border-dashed border-primary")}
+          className={cn(
+            card.kind === "forecast" && "border-dashed border-primary"
+          )}
         >
-          {entered ? "Entered" : "Forecast"}
+          {KIND_LABEL[card.kind]}
         </Badge>
         <p className="font-medium tabular-nums">{formatMoney(bill.amount)}</p>
       </div>
@@ -184,9 +201,9 @@ function BillCardView({
           issued {formatDayShort(bill.issuedOn)}
         </span>
       </div>
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 max-md:flex-col max-md:items-stretch">
         <p className="text-xs text-muted-foreground">{card.basis}</p>
-        <div className="flex gap-1">
+        <div className="flex gap-1 max-md:[&>*]:flex-1">
           <Button
             type="button"
             variant="ghost"
@@ -209,8 +226,20 @@ function BillCardView({
           </Button>
         </div>
       </div>
-      {mode === "edit" && <PlanForm bill={bill} />}
-      {mode === "paid" && <PaidForm bill={bill} payments={payments} />}
+      <EditSurface
+        open={mode === "edit"}
+        onClose={() => setOpen(null)}
+        title={`${bill.personName}'s bill`}
+      >
+        <PlanForm bill={bill} />
+      </EditSurface>
+      <EditSurface
+        open={mode === "paid"}
+        onClose={() => setOpen(null)}
+        title={`Mark ${bill.personName}'s bill paid`}
+      >
+        <PaidForm bill={bill} payments={payments} />
+      </EditSurface>
     </li>
   )
 }
@@ -228,10 +257,10 @@ function Bucket({
 }) {
   const month = formatMonthName(bucket.month)
   return (
-    <section className="flex min-w-0 flex-col gap-4 rounded-lg border border-border bg-muted/40 p-4">
+    <section className="flex w-full min-w-0 flex-col gap-4 rounded-lg border border-border bg-muted/40 p-3 md:p-4">
       <header className="flex flex-col gap-2 border-b border-border pb-3">
         <div className="flex items-baseline justify-between gap-2">
-          <h3 className="font-heading text-base font-semibold">{month}</h3>
+          <h2 className="font-heading text-base font-semibold">{month}</h2>
           <p className="text-sm text-muted-foreground">
             {bucket.count} {bucket.count === 1 ? "bill" : "bills"}
           </p>
@@ -245,10 +274,18 @@ function Bucket({
               paid out to contractors
             </p>
           </div>
-          <p className="text-right text-xs tabular-nums">
-            {formatMoney(bucket.entered)} entered
-            <br />
-            {formatMoney(bucket.forecast)} forecast
+          <p className="text-xs tabular-nums md:text-right">
+            <span className="md:block">
+              {formatMoney(bucket.entered)} entered
+            </span>
+            <span className="md:hidden"> · </span>
+            <span className="md:block">
+              {formatMoney(bucket.calculated)} calculated
+            </span>
+            <span className="md:hidden"> · </span>
+            <span className="md:block">
+              {formatMoney(bucket.forecast)} forecast
+            </span>
           </p>
         </div>
         <SplitBar parts={bucket.parts} />
@@ -315,14 +352,19 @@ export function BillsBuckets({
           size="sm"
           aria-expanded={adding}
           onClick={() => setAdding(!adding)}
+          className="fixed right-4 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 max-md:bg-primary! max-md:text-primary-foreground! max-md:shadow-lg md:static"
         >
           <Plus aria-hidden />
           Enter a bill
         </Button>
       </CardHeader>
-      <CardContent className="flex flex-col gap-6">
-        {adding && (
-          <div className="rounded-lg border border-border p-3">
+      <CardContent className="flex flex-col gap-6 max-md:px-2">
+        <EditSurface
+          open={adding}
+          onClose={() => setAdding(false)}
+          title="Enter a bill"
+        >
+          <div className="rounded-lg border border-border p-3 max-md:border-0 max-md:p-0">
             <p className="mb-3 text-sm text-muted-foreground">
               This replaces the forecast bill for the same person and date.
             </p>
@@ -358,18 +400,19 @@ export function BillsBuckets({
               </div>
             </ActionForm>
           </div>
-        )}
-        <div className="grid gap-4 lg:grid-cols-3">
+        </EditSurface>
+        <MonthSwipe className="grid gap-4 lg:grid-cols-3">
           {buckets.months.map((b) => (
-            <Bucket
-              key={b.month}
-              bucket={b}
-              payments={payments}
-              open={open}
-              setOpen={setOpen}
-            />
+            <MonthPane key={b.month} month={b.month} className="flex">
+              <Bucket
+                bucket={b}
+                payments={payments}
+                open={open}
+                setOpen={setOpen}
+              />
+            </MonthPane>
           ))}
-        </div>
+        </MonthSwipe>
         {buckets.later.length > 0 && (
           <details className="border-t border-border pt-4">
             <summary className="cursor-pointer text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
@@ -392,18 +435,18 @@ export function BillsBuckets({
           <summary className="cursor-pointer text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
             Paid bills ({buckets.paid.length})
           </summary>
-          <ul className="mt-3 flex flex-wrap gap-2">
+          <ul className="mt-3 flex flex-wrap gap-2 max-md:flex-col">
             {buckets.paid.map((c) => (
               <li
                 key={`${c.bill.personId}-${c.bill.issuedOn}`}
-                className="flex items-center gap-2 rounded-md border border-border px-2 py-1 text-xs"
+                className="flex items-center gap-2 rounded-md border border-border px-2 py-1 text-xs max-md:grid max-md:grid-cols-[auto_1fr_auto] max-md:text-sm"
               >
                 <Dot colour={c.colour} />
                 <span>{c.bill.personName}</span>
                 <span className="font-medium tabular-nums">
                   {formatMoney(c.bill.paidAmount ?? c.bill.amount)}
                 </span>
-                <span className="text-muted-foreground tabular-nums">
+                <span className="text-muted-foreground tabular-nums max-md:col-span-3 max-md:text-xs">
                   paid {c.payOn && formatDayShort(c.payOn)}
                 </span>
                 {c.bill.id && (

@@ -277,6 +277,10 @@ function segmentsFor(
   ]
 }
 
+/** The id of a client's invoices in one month, so a link can go straight to them. */
+export const clientAnchor = (client: string, month: string) =>
+  `client-${month.slice(0, 7)}-${client.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`
+
 /**
  * Take-home is the whole month-end payout, so it's salary and dividend together.
  * The salary comes first; only what's above it is dividend.

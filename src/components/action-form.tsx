@@ -2,6 +2,7 @@
 
 import { startTransition, useActionState, useEffect, useRef } from "react"
 
+import { useInSheet } from "@/components/bottom-sheet"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -26,6 +27,8 @@ export function ActionForm({
 }) {
   const [state, formAction, pending] = useActionState(action, null)
   const form = useRef<HTMLFormElement>(null)
+  // Only the main action is pinned: never a delete or clear.
+  const pinned = useInSheet() && variant !== "ghost"
   useEffect(() => {
     if (state?.ok && resetOnSuccess) form.current?.reset()
   }, [state, resetOnSuccess])
@@ -40,11 +43,24 @@ export function ActionForm({
         const data = new FormData(e.currentTarget)
         startTransition(() => formAction(data))
       }}
-      className={cn("flex flex-col gap-3", className)}
+      className={cn("flex flex-col gap-3", pinned && "flex-1", className)}
     >
       {children}
-      <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" variant={variant} size="sm" disabled={pending}>
+      <div
+        className={cn(
+          "flex flex-wrap items-center gap-3",
+          // In a sheet, the action stays on screen above the safe area.
+          pinned &&
+            "sticky bottom-0 z-10 -mx-4 mt-auto w-[calc(100%+2rem)] border-t border-border bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+        )}
+      >
+        <Button
+          type="submit"
+          variant={variant}
+          size="sm"
+          disabled={pending}
+          className={pinned ? "w-full" : undefined}
+        >
           {pending ? "Saving…" : submit}
         </Button>
         {state && (

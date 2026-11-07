@@ -2,6 +2,13 @@ import Link from "next/link"
 
 import { ActionForm } from "@/components/action-form"
 import { BalanceLine, MonthlyBars } from "@/components/charts"
+import {
+  MonthPane,
+  MonthProvider,
+  MonthSwipe,
+  MonthSwitcher,
+} from "@/components/month-context"
+import { SectionTabs } from "@/components/section-tabs"
 import { Field } from "@/components/form-fields"
 import { PageHeader } from "@/components/page-header"
 import { StatTile } from "@/components/stat-tile"
@@ -39,7 +46,6 @@ import {
   formatPercent,
 } from "@/lib/format"
 import { requireDirector } from "@/lib/session"
-import { cn } from "@/lib/utils"
 import { clearManualBalance, saveManualBalance } from "./actions"
 import { BillsBuckets } from "./bills-buckets"
 import { AdjustmentsTable, HoldBacksTable } from "./cash-tables"
@@ -62,25 +68,15 @@ type TabKey = (typeof TABS)[number]["key"]
 
 function Tabs({ tab }: { tab: TabKey }) {
   return (
-    <nav
-      aria-label="Forecast sections"
-      className="flex flex-wrap gap-1 rounded-xl bg-black/30 p-1 text-sm ring-1 ring-violet-500/60"
-    >
-      {TABS.map((t) => (
-        <Link
-          key={t.key}
-          href={t.key === "overview" ? "/forecast" : `/forecast?tab=${t.key}`}
-          aria-current={tab === t.key ? "page" : undefined}
-          className={cn(
-            "rounded-lg px-3 py-1.5 font-medium text-muted-foreground hover:text-foreground",
-            tab === t.key &&
-              "bg-violet-500/20 text-violet-100 ring-1 ring-violet-400/50"
-          )}
-        >
-          {t.label}
-        </Link>
-      ))}
-    </nav>
+    <SectionTabs
+      label="Forecast sections"
+      active={tab}
+      tabs={TABS.map((t) => ({
+        key: t.key,
+        label: t.label,
+        href: t.key === "overview" ? "/forecast" : `/forecast?tab=${t.key}`,
+      }))}
+    />
   )
 }
 
@@ -150,10 +146,16 @@ function Warnings({ warnings }: { warnings: ForecastPageData["warnings"] }) {
   )
 }
 
-function BalanceCard({ result }: { result: Ready["result"] }) {
+function BalanceCard({
+  result,
+  className,
+}: {
+  result: Ready["result"]
+  className?: string
+}) {
   const charts = forecastCharts(result)
   return (
-    <Card>
+    <Card className={className}>
       <CardHeader>
         <CardTitle>Cash in the main account</CardTitle>
         <CardDescription>
@@ -165,6 +167,7 @@ function BalanceCard({ result }: { result: Ready["result"] }) {
       <CardContent>
         <BalanceLine
           today={charts.today}
+          className="max-md:h-45"
           data={charts.balance.map((d) => ({
             ...d,
             label: formatDayShort(d.date),
@@ -179,7 +182,7 @@ function OverviewTab({ data }: { data: Ready }) {
   const { result } = data
   return (
     <>
-      <BalanceCard result={result} />
+      <BalanceCard result={result} className="max-md:order-last" />
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -187,12 +190,14 @@ function OverviewTab({ data }: { data: Ready }) {
           </div>
           <CopyButton text={breakdownText(result.months)} />
         </CardHeader>
-        <CardContent>
-          <div className="grid items-start gap-4 lg:grid-cols-3">
+        <CardContent className="max-md:px-2">
+          <MonthSwipe className="grid items-start gap-4 lg:grid-cols-3">
             {overviewBuckets(result, formatMoney).map((b) => (
-              <OverviewBucketCard key={b.month} bucket={b} />
+              <MonthPane key={b.month} month={b.month}>
+                <OverviewBucketCard bucket={b} />
+              </MonthPane>
             ))}
-          </div>
+          </MonthSwipe>
         </CardContent>
       </Card>
     </>
@@ -201,6 +206,8 @@ function OverviewTab({ data }: { data: Ready }) {
 
 function InOutTab({ data }: { data: Ready }) {
   const rows = inOutMonths(data.result, formatMoney)
+  const shown = new Set(data.result.months.map((m) => m.month))
+  const earlier = rows.filter((m) => !shown.has(m.month))
   return (
     <Card>
       <CardHeader>
@@ -210,12 +217,32 @@ function InOutTab({ data }: { data: Ready }) {
           dividends and the month-end payout.
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <div className="grid items-start gap-4 lg:grid-cols-3">
-          {rows.map((m) => (
-            <InOutMonthCard key={m.month} month={m} />
-          ))}
-        </div>
+      <CardContent className="flex flex-col gap-4 max-md:px-2">
+        <MonthSwipe className="grid items-start gap-4 lg:grid-cols-3">
+          {rows.map((m) =>
+            shown.has(m.month) ? (
+              <MonthPane key={m.month} month={m.month}>
+                <InOutMonthCard month={m} />
+              </MonthPane>
+            ) : (
+              <div key={m.month} className="min-w-0 max-md:hidden">
+                <InOutMonthCard month={m} />
+              </div>
+            )
+          )}
+        </MonthSwipe>
+        {earlier.length > 0 && (
+          <details className="border-t border-border md:hidden">
+            <summary className="cursor-pointer text-sm font-medium">
+              Earlier months ({earlier.length})
+            </summary>
+            <div className="flex flex-col gap-4 pt-2">
+              {earlier.map((m) => (
+                <InOutMonthCard key={m.month} month={m} />
+              ))}
+            </div>
+          </details>
+        )}
       </CardContent>
     </Card>
   )
@@ -317,8 +344,9 @@ function TimelineTab({ data }: { data: Ready }) {
         <CardHeader>
           <CardTitle>Every cash event</CardTitle>
           <CardDescription>
-            Hover a chip to see the events inside it. Hidden events still count
-            towards the balance.
+            <span className="max-md:hidden">Hover</span>
+            <span className="md:hidden">Tap</span> a chip to see the events
+            inside it. Hidden events still count towards the balance.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -450,10 +478,10 @@ const isReady = (d: ForecastPageData): d is Ready =>
 export default async function ForecastPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string }>
+  searchParams: Promise<{ tab?: string; month?: string }>
 }) {
   await requireDirector()
-  const requested = (await searchParams).tab
+  const { tab: requested, month } = await searchParams
   const tab: TabKey =
     requested === "money"
       ? "bills"
@@ -466,7 +494,7 @@ export default async function ForecastPage({
       title="Forecast"
       lede="Take-home per director, from Solidtime hours and Xero's bank data."
       actions={
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-3 md:w-auto">
           {isReady(data) && (
             <a
               href="/api/export/forecast-pack"
@@ -475,7 +503,9 @@ export default async function ForecastPage({
               Export Markdown
             </a>
           )}
-          <Tabs tab={tab} />
+          <div className="w-full min-w-0 md:w-auto">
+            <Tabs tab={tab} />
+          </div>
         </div>
       }
     />
@@ -511,18 +541,27 @@ export default async function ForecastPage({
   }
 
   return (
-    <div className="flex flex-col gap-8">
-      {header}
-      <Warnings warnings={data.warnings} />
-      {tab === "overview" && <OverviewTab data={data} />}
-      {tab === "in-out" && <InOutTab data={data} />}
-      {tab === "money-in" && <MoneyInTab data={data} />}
-      {tab === "bills" && <BillsTab data={data} />}
-      {tab === "running-costs" && (
-        <RunningCosts tally={data.result.runningCosts} />
-      )}
-      {tab === "timeline" && <TimelineTab data={data} />}
-      {tab === "accuracy" && <AccuracyTab data={data} />}
-    </div>
+    <MonthProvider
+      months={data.result.months.map((m) => m.month)}
+      initial={month}
+    >
+      <div className="flex flex-col gap-4 md:gap-8">
+        {header}
+        <Warnings warnings={data.warnings} />
+        {(tab === "overview" ||
+          tab === "in-out" ||
+          tab === "money-in" ||
+          tab === "bills") && <MonthSwitcher />}
+        {tab === "overview" && <OverviewTab data={data} />}
+        {tab === "in-out" && <InOutTab data={data} />}
+        {tab === "money-in" && <MoneyInTab data={data} />}
+        {tab === "bills" && <BillsTab data={data} />}
+        {tab === "running-costs" && (
+          <RunningCosts tally={data.result.runningCosts} />
+        )}
+        {tab === "timeline" && <TimelineTab data={data} />}
+        {tab === "accuracy" && <AccuracyTab data={data} />}
+      </div>
+    </MonthProvider>
   )
 }
