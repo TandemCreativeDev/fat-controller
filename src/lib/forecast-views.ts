@@ -491,7 +491,11 @@ const billCard = (result: Ready, bill: BillPlan): BillCard => {
         : "forecast",
     payOn,
     late: payOn !== null && payOn > bill.dueOn,
-    basis: bill.id ? "Entered from the bill" : "From tracked hours",
+    basis: bill.id
+      ? "Entered from the bill"
+      : bill.source === "tracked"
+        ? "From tracked hours"
+        : "Tracked hours so far + forecast at their usual rate",
     colour: contractorColour(result, bill.personName),
   }
 }
