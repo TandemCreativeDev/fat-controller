@@ -147,6 +147,8 @@ export type ProjectInput = {
   xeroContactId?: string | null
   /** No work is forecast after this date. */
   endDate?: string | null
+  /** The client pays for at most this many days on one invoice. */
+  maxDaysPerInvoice?: string | null
 }
 
 export type PersonInput = {
@@ -211,6 +213,8 @@ export type OverrideInput = {
   periodEnd: string
   days: string | null
   amountGbp: string | null
+  /** This invoice's cap on days, in place of the project's. */
+  maxDays?: string | null
   note?: string | null
 }
 
@@ -465,6 +469,12 @@ export type BuiltInvoice = {
   overrideDays: string | null
   overrideAmount: string | null
   overrideNote: string | null
+  /** This invoice's own cap on days, if a director set one. */
+  overrideMaxDays: string | null
+  /** The cap on days that applies to a forecast invoice, from it or its project. */
+  capDays: string | null
+  /** The cap cut the days billed. */
+  capped: boolean
   /** The Xero contact on the invoice, or on its project for a forecast one. */
   clientName?: string | null
   /** Set on a one-off invoice a director added. */
@@ -773,8 +783,10 @@ class DayBook {
 // ------------------------------------------------------------------ section A
 
 type Built = BuiltInvoice & {
-  /** Multiplies every person's days inside the period. */
+  /** Multiplies every person's tracked days inside the period. */
   factor: Dec
+  /** Multiplies every person's forecast days inside the period. */
+  forecastFactor: Dec
   /** VAT on a forecast invoice, once registered. */
   forecastVat: Dec
   dueDateRaw: string
@@ -900,7 +912,11 @@ function buildInvoices(
         overrideDays: null,
         overrideAmount: null,
         overrideNote: null,
+        overrideMaxDays: null,
+        capDays: null,
+        capped: false,
         factor: new D(1),
+        forecastFactor: new D(1),
         forecastVat: ZERO,
       })
     }
@@ -944,17 +960,24 @@ function buildInvoices(
 
       let tracked = ZERO
       let forecast = ZERO
-      const byPerson = new Map<string, Dec>()
+      const byPerson = new Map<string, { tracked: Dec; forecast: Dec }>()
       for (const person of book.personsOn(project.id)) {
-        let personDays = ZERO
+        let personTracked = ZERO
+        let personForecast = ZERO
         for (const d of days) {
-          const t = book.trackedOn(project.id, person, d)
-          const f = book.forecastOn(project.id, person, d)
-          tracked = tracked.plus(t)
-          forecast = forecast.plus(f)
-          personDays = personDays.plus(t).plus(f)
+          personTracked = personTracked.plus(
+            book.trackedOn(project.id, person, d)
+          )
+          personForecast = personForecast.plus(
+            book.forecastOn(project.id, person, d)
+          )
         }
-        byPerson.set(person, personDays)
+        tracked = tracked.plus(personTracked)
+        forecast = forecast.plus(personForecast)
+        byPerson.set(person, {
+          tracked: personTracked,
+          forecast: personForecast,
+        })
       }
       const unscaled = tracked.plus(forecast)
 
@@ -963,13 +986,24 @@ function buildInvoices(
       )
       const hasAmount = override?.amountGbp != null
       const hasDays = override?.days != null
+      const cap = override?.maxDays ?? project.maxDaysPerInvoice ?? null
       let factor = new D(1)
+      let forecastFactor = new D(1)
       let total = unscaled
+      let capped = false
       if (hasAmount || hasDays) {
         total = hasAmount
           ? new D(override!.amountGbp!).div(chargeRate)
           : new D(override!.days!)
         factor = unscaled.isZero() ? ZERO : total.div(unscaled)
+        forecastFactor = factor
+      } else if (cap !== null && unscaled.gt(cap)) {
+        // The client won't pay past the cap, so the forecast stops there. Days
+        // already tracked are still owed to contractors, even past it.
+        capped = true
+        total = new D(cap)
+        const room = D.max(ZERO, total.minus(tracked))
+        forecastFactor = forecast.isZero() ? ZERO : room.div(forecast)
       }
 
       // Nothing left to bill after the project ended, so there's no last invoice.
@@ -995,11 +1029,12 @@ function buildInvoices(
           )
 
       let cost = ZERO
-      for (const [person, personDays] of byPerson)
+      for (const [person, d] of byPerson)
         if (isContractor(input, person))
           cost = cost.plus(
-            personDays
+            d.tracked
               .times(factor)
+              .plus(d.forecast.times(forecastFactor))
               .times(rateFor(input, person, project.id) ?? ZERO)
           )
       cost = penny(cost)
@@ -1033,16 +1068,21 @@ function buildInvoices(
         total: money(amount.plus(vat)),
         totalTax: money(vat),
         outstanding: money(amount.plus(vat)),
-        source: override
-          ? "override"
-          : forecast.isZero()
+        source:
+          hasAmount || hasDays
+            ? "override"
+            : forecast.isZero()
             ? "tracked"
             : "forecast",
         hasOverride: Boolean(override),
         overrideDays: override?.days ?? null,
         overrideAmount: override?.amountGbp ?? null,
         overrideNote: override?.note ?? null,
+        overrideMaxDays: override?.maxDays ?? null,
+        capDays: cap,
+        capped,
         factor,
+        forecastFactor,
         forecastVat: vat,
       })
     }
@@ -1086,7 +1126,11 @@ function buildInvoices(
       overrideDays: null,
       overrideAmount: null,
       overrideNote: null,
+      overrideMaxDays: null,
+      capDays: null,
+      capped: false,
       factor: new D(1),
+      forecastFactor: new D(1),
       forecastVat: ZERO,
     })
   }
@@ -1128,7 +1172,11 @@ function buildInvoices(
       overrideDays: null,
       overrideAmount: null,
       overrideNote: null,
+      overrideMaxDays: null,
+      capDays: null,
+      capped: false,
       factor: new D(1),
+      forecastFactor: new D(1),
       forecastVat: vat,
     })
   }
@@ -1185,7 +1233,11 @@ function missed(
     overrideDays: override?.days ?? null,
     overrideAmount: override?.amountGbp ?? null,
     overrideNote: override?.note ?? null,
+    overrideMaxDays: override?.maxDays ?? null,
+    capDays: null,
+    capped: false,
     factor: new D(1),
+    forecastFactor: new D(1),
     forecastVat: ZERO,
   }
 }
@@ -1227,11 +1279,14 @@ function contractorCostInRange(
     for (const d of dates) {
       const period = periods.find((p) => d >= p.periodStart && d <= p.periodEnd)
       const factor = period?.factor ?? new D(1)
+      const forecastFactor = period?.forecastFactor ?? new D(1)
       const t = book.trackedOn(project.id, personId, d)
       const f = book.forecastOn(project.id, personId, d)
       if (!factor.equals(1) && (t.gt(0) || f.gt(0))) overridden = true
       if (f.gt(0)) future = true
-      amount = amount.plus(t.plus(f).times(factor).times(rate))
+      amount = amount.plus(
+        t.times(factor).plus(f.times(forecastFactor)).times(rate)
+      )
     }
   }
 
@@ -2526,8 +2581,15 @@ export function runForecast(input: ForecastInput): ForecastResult {
 }
 
 function stripBuilt(b: Built): BuiltInvoice {
-  const { factor: _f, forecastVat: _v, dueDateRaw: _d, ...rest } = b
+  const {
+    factor: _f,
+    forecastFactor: _ff,
+    forecastVat: _v,
+    dueDateRaw: _d,
+    ...rest
+  } = b
   void _f
+  void _ff
   void _v
   void _d
   return rest
@@ -2719,6 +2781,9 @@ export type MoneyInRow = {
   overrideDays: string | null
   overrideAmount: string | null
   overrideNote: string | null
+  overrideMaxDays: string | null
+  capDays: string | null
+  capped: boolean
   /** Forecast invoices can have their days or amount changed; raised ones can't. */
   canOverride: boolean
   clientName: string | null
@@ -2786,6 +2851,9 @@ export function moneyInTable(
         overrideDays: inv.overrideDays,
         overrideAmount: inv.overrideAmount,
         overrideNote: inv.overrideNote,
+        overrideMaxDays: inv.overrideMaxDays,
+        capDays: inv.capDays,
+        capped: inv.capped,
         canOverride: inv.status !== "raised" && inv.projectId !== null,
         clientName: inv.clientName ?? null,
         netAmount: inv.amount,

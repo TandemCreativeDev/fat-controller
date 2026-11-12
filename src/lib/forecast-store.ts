@@ -435,6 +435,7 @@ export async function loadForecastInput(
       periodEnd: o.periodEnd,
       days: o.days,
       amountGbp: o.amountGbp,
+      maxDays: o.maxDays,
       note: o.note,
     })),
     cash,

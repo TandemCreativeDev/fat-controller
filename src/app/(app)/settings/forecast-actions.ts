@@ -20,6 +20,7 @@ import {
   firstError,
   moneyField,
   optionalDate,
+  optionalDays,
   optionalMoney,
   optionalText,
   optionalUuid,
@@ -148,6 +149,7 @@ const projectForm = z
     extraInvoiceDates: dateList,
     skippedInvoiceDates: dateList,
     paymentTermsDays: z.coerce.number().int().min(0).default(30),
+    maxDaysPerInvoice: optionalDays,
     active: z.preprocess((v) => v === "on", z.boolean()),
   })
   .refine((p) => p.kind === "internal" || p.code, {
@@ -176,6 +178,7 @@ export async function saveProject(
     ...v,
     code: v.kind === "internal" ? null : v.code,
     chargeRateGbp: v.kind === "internal" ? null : v.chargeRateGbp,
+    maxDaysPerInvoice: v.kind === "internal" ? null : v.maxDaysPerInvoice,
   }
   try {
     await db.transaction(async (tx) => {

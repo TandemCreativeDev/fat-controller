@@ -160,7 +160,12 @@ export function invoiceDetail(
         : tracked.gt(0)
           ? `From ${days(row.trackedDays)} days tracked`
           : "No time tracked or forecast yet"
-  const set = row.hasOverride ? ` · set to ${days(row.totalDays)} days` : ""
+  const set =
+    row.overrideDays !== null || row.overrideAmount !== null
+      ? ` · set to ${days(row.totalDays)} days`
+      : row.capped
+        ? ` · capped at ${days(row.totalDays)} days`
+        : ""
   return `${basis}${set} · ${costSuffix}`
 }
 

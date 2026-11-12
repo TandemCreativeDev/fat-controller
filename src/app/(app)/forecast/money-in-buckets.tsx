@@ -134,7 +134,7 @@ function Editor({ row }: { row: MoneyInRow }) {
         <div className="flex items-end gap-2 max-md:flex-col max-md:items-stretch">
           <ActionForm
             action={saveOverride}
-            submit="Set days or amount"
+            submit="Set days, amount or cap"
             variant="outline"
             className="flex-row flex-wrap items-end max-md:flex-col max-md:items-stretch"
           >
@@ -155,6 +155,18 @@ function Editor({ row }: { row: MoneyInRow }) {
               inputMode="decimal"
               className="w-28 max-md:w-full"
               defaultValue={row.overrideAmount ?? ""}
+            />
+            <Field
+              id={`cap-${row.key}`}
+              name="maxDays"
+              label={
+                row.capDays && row.overrideMaxDays === null
+                  ? `Cap (project: ${Number(row.capDays)} days)`
+                  : "Cap (days)"
+              }
+              inputMode="decimal"
+              className="w-36 max-md:w-full"
+              defaultValue={row.overrideMaxDays ?? ""}
             />
             <Field
               id={`override-note-${row.key}`}

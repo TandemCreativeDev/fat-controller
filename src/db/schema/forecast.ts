@@ -89,6 +89,8 @@ export const project = pgTable("project", {
     .notNull()
     .default(sql`'{}'`),
   paymentTermsDays: integer("payment_terms_days").notNull().default(30),
+  /** The client pays for at most this many days on one invoice; null is no cap. */
+  maxDaysPerInvoice: numeric("max_days_per_invoice", { precision: 10, scale: 4 }),
   active: boolean("active").notNull().default(true),
 })
 
@@ -191,6 +193,8 @@ export const forecastOverride = pgTable(
     periodEnd: date("period_end").notNull(),
     days: numeric("days", { precision: 10, scale: 4 }),
     amountGbp: money("amount_gbp"),
+    /** This invoice's cap on days, in place of the project's. */
+    maxDays: numeric("max_days", { precision: 10, scale: 4 }),
     note: text("note"),
     createdBy: createdBy(),
   },

@@ -116,6 +116,15 @@ function ProjectForm({
               type="date"
               defaultValue={row?.endDate ?? ""}
             />
+            <Field
+              name="maxDaysPerInvoice"
+              label="Most days per invoice"
+              hint="Optional. The client won't pay for more"
+              inputMode="decimal"
+              defaultValue={
+                row?.maxDaysPerInvoice ? String(Number(row.maxDaysPerInvoice)) : ""
+              }
+            />
           </div>
         </FormSection>
         <FormSection
@@ -209,6 +218,9 @@ export default async function ProjectsPage({
     meta: [
       p.xeroContactId ? contactName.get(p.xeroContactId) : null,
       p.kind === "client" ? `every ${p.invoiceIntervalDays} days` : null,
+      p.kind === "client" && p.maxDaysPerInvoice
+        ? `max ${Number(p.maxDaysPerInvoice)} days`
+        : null,
       p.endDate
         ? `${p.endDate < today ? "ended" : "ends"} ${formatDay(p.endDate)}`
         : null,

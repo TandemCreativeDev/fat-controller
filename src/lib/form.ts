@@ -16,6 +16,14 @@ export const optionalInt = z.preprocess(
   blankToNull,
   z.coerce.number().int().nullable()
 )
+export const optionalDays = z.preprocess(
+  blankToNull,
+  z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,4})?$/, "Enter a number of days")
+    .nullable()
+)
 export const optionalText = z.preprocess(
   blankToNull,
   z.string().trim().nullable()

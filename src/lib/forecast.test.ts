@@ -570,6 +570,78 @@ describe("overrides", () => {
   })
 })
 
+describe("days cap per invoice", () => {
+  const capped = (cap: string, overrides: ForecastInput["overrides"] = []) =>
+    baseInput({
+      projects: [{ ...PROJECT_A, maxDaysPerInvoice: cap }, PROJECT_B],
+      overrides: [...baseInput().overrides, ...overrides],
+    })
+  const alpha = (r: ReturnType<typeof run>) =>
+    r.invoices.find((i) => i.invoiceDate === "2026-06-12")!
+
+  it("bills no more than the project's cap, and forecasts no more work", () => {
+    // 9 forecast days capped at 4.5: half the invoice and half the cost.
+    const r = run(capped("4.5"))
+    const inv = alpha(r)
+    expect(inv.totalDays).toBe("4.5000")
+    expect(inv.forecastDays).toBe("9.0000")
+    expect(inv.amount).toBe("2250.00")
+    expect(inv.contractorCost).toBe("1350.00")
+    expect(inv.capped).toBe(true)
+    expect(inv.source).toBe("forecast")
+    // June's bill covers 23 May to 19 June: 9 days at half, then 5 of the next
+    // invoice's 10 days, also capped at 4.5 of 10: 6.75 days at £300.
+    expect(r.bills.find((b) => b.issuedOn === "2026-06-26")!.amount).toBe(
+      "2025.00"
+    )
+  })
+
+  it("leaves an invoice under the cap alone", () => {
+    const inv = alpha(run(capped("10")))
+    expect(inv.amount).toBe("4500.00")
+    expect(inv.capped).toBe(false)
+    expect(inv.capDays).toBe("10")
+  })
+
+  it("lets one invoice's cap replace the project's", () => {
+    const inv = alpha(
+      run(
+        capped("4.5", [
+          {
+            projectId: "pa",
+            periodEnd: "2026-06-12",
+            days: null,
+            amountGbp: null,
+            maxDays: "6",
+          },
+        ])
+      )
+    )
+    expect(inv.amount).toBe("3000.00")
+    expect(inv.overrideMaxDays).toBe("6")
+    expect(inv.source).toBe("forecast")
+  })
+
+  it("still pays contractors for tracked days past the cap", () => {
+    const input = capped("4")
+    input.entries = [
+      ...input.entries,
+      // 6 days tracked in the period, so nothing is left to forecast.
+      entry("u-c1", "st-a", "2026-05-30", 45),
+    ]
+    const inv = alpha(run(input))
+    expect(inv.amount).toBe("2000.00")
+    expect(inv.contractorCost).toBe("1800.00")
+  })
+
+  it("says the invoice was capped", () => {
+    const row = moneyInTable(run(capped("4.5")))
+      .flatMap((g) => g.rows)
+      .find((r) => r.invoiceDate === "2026-06-12")!
+    expect(invoiceDetail(row, formatMoney)).toContain("capped at 4.50 days")
+  })
+})
+
 describe("invoices", () => {
   it("rounds forecast days to the nearest quarter, half up", () => {
     const input = baseInput({

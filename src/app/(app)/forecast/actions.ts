@@ -21,10 +21,10 @@ import {
 } from "@/db/schema"
 import { addDays, londonDate } from "@/lib/forecast"
 import {
-  blankToNull,
   firstError,
   moneyField,
   optionalDate,
+  optionalDays,
   optionalMoney,
   optionalText,
   optionalUuid,
@@ -108,18 +108,16 @@ const overrideForm = z
   .object({
     projectId: z.uuid(),
     periodEnd: z.iso.date(),
-    days: z.preprocess(
-      blankToNull,
-      z
-        .string()
-        .regex(/^\d+(\.\d{1,4})?$/, "Enter a number of days")
-        .nullable()
-    ),
+    days: optionalDays,
     amountGbp: optionalMoney,
+    maxDays: optionalDays,
     note: optionalText,
   })
-  .refine((o) => (o.days === null) !== (o.amountGbp === null), {
-    message: "Enter either days or an amount",
+  .refine((o) => o.days === null || o.amountGbp === null, {
+    message: "Enter either days or an amount, not both",
+  })
+  .refine((o) => o.days !== null || o.amountGbp !== null || o.maxDays, {
+    message: "Enter days, an amount or a cap",
   })
 
 export async function saveOverride(
@@ -129,7 +127,7 @@ export async function saveOverride(
   const director = await requireDirector()
   const parsed = overrideForm.safeParse(form(data))
   if (!parsed.success) return { ok: false, message: firstError(parsed.error) }
-  const { projectId, periodEnd, days, amountGbp, note } = parsed.data
+  const { projectId, periodEnd, days, amountGbp, maxDays, note } = parsed.data
   await db
     .insert(forecastOverride)
     .values({
@@ -137,12 +135,13 @@ export async function saveOverride(
       periodEnd,
       days,
       amountGbp,
+      maxDays,
       note,
       createdBy: director.id,
     })
     .onConflictDoUpdate({
       target: [forecastOverride.projectId, forecastOverride.periodEnd],
-      set: { days, amountGbp, note, createdBy: director.id },
+      set: { days, amountGbp, maxDays, note, createdBy: director.id },
     })
   refresh()
   return saved
