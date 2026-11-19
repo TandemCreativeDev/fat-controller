@@ -174,3 +174,22 @@ export async function getCorporationTaxPage(): Promise<CtPage | null> {
     associatedCompanies: settings.ct_associated_companies,
   }
 }
+
+export type SetAsidesPage = {
+  years: PaidYear[]
+  setAsideRate: number
+}
+
+/** Paid invoices since tracking's financial year began, each with its set-aside. */
+export async function getSetAsidesPage(): Promise<SetAsidesPage | null> {
+  const [settings, forecast] = await Promise.all([
+    getSettings(),
+    getForecastPage(),
+  ])
+  const result = forecast.result
+  if (!result || result.blocked) return null
+  return {
+    years: paidView(result, []).years,
+    setAsideRate: settings.ct_set_aside_rate,
+  }
+}

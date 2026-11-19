@@ -16,7 +16,6 @@ import {
 import { requireDirector } from "@/lib/session"
 import { cn } from "@/lib/utils"
 import { CtPaidBox } from "./ct-paid-box"
-import { PaidInvoices } from "./paid-invoices"
 import { Working } from "./working"
 
 const BAND: Record<CtBand, string> = {
@@ -66,7 +65,6 @@ function YearCard({ year }: { year: CtYearRow }) {
   const e = year.estimate
   const label = yearLabel(year)
   const short = sign(year.short) > 0
-  const n = year.paid?.invoices.length ?? 0
   return (
     <section
       className={cn(
@@ -119,9 +117,12 @@ function YearCard({ year }: { year: CtYearRow }) {
         <Sum year={year} />
         <div className="flex flex-col gap-1 text-sm tabular-nums">
           <p className="flex justify-between gap-4">
-            <span className="text-muted-foreground">
+            <Link
+              href="/set-asides"
+              className="text-muted-foreground underline decoration-muted-foreground underline-offset-4 hover:text-foreground"
+            >
               Set aside from invoices
-            </span>
+            </Link>
             {formatPence(year.setAside)}
           </p>
           <p
@@ -140,18 +141,6 @@ function YearCard({ year }: { year: CtYearRow }) {
           )}
         </div>
       </div>
-
-      {year.paid && n > 0 && (
-        <details className="group">
-          <summary className="cursor-pointer text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
-            {n} paid {n === 1 ? "invoice" : "invoices"}, with each one&apos;s
-            set-aside
-          </summary>
-          <div className="mt-3">
-            <PaidInvoices year={year.paid} />
-          </div>
-        </details>
-      )}
     </section>
   )
 }
@@ -224,9 +213,11 @@ export default async function CorporationTaxPage() {
         Estimated from the books: sales less costs, with equipment deducted in
         full. Corporation Tax is 19% on profit up to £50,000, 25% from £250,000,
         and in between 25% less marginal relief. Your accountant&apos;s figure
-        is the final one. Each invoice&apos;s set-aside is{" "}
-        {formatPercent(data.setAsideRate)} of its margin, the rate in Settings.
-        Tick a year once its CT is paid.
+        is the final one. Each year compares the estimate with what&apos;s been{" "}
+        <Link href="/set-asides" className="underline underline-offset-4">
+          set aside from invoices
+        </Link>
+        . Tick a year once its CT is paid.
       </p>
       {data.years.map((y) => (
         <YearCard key={y.start} year={y} />

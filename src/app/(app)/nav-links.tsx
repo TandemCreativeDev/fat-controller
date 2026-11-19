@@ -12,6 +12,12 @@ const nav = [
   { href: "/staff", label: "Staff", periodic: true },
   { href: "/forecast", label: "Forecast", periodic: false },
   {
+    href: "/set-asides",
+    label: "Set-asides",
+    short: "Set aside",
+    periodic: false,
+  },
+  {
     href: "/corporation-tax",
     label: "Corporation tax",
     short: "CT",
@@ -61,7 +67,7 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Main"
-      className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] text-xs backdrop-blur-md md:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-7 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] text-xs backdrop-blur-md md:hidden"
     >
       {nav.map((n) => {
         const active =
@@ -76,7 +82,7 @@ export function BottomNav() {
             }
             aria-current={active ? "page" : undefined}
             className={cn(
-              "flex min-h-14 items-center justify-center font-medium text-muted-foreground",
+              "flex min-h-14 items-center justify-center px-0.5 text-center leading-tight font-medium text-muted-foreground",
               active && "bg-violet-500/20 text-violet-100"
             )}
           >
