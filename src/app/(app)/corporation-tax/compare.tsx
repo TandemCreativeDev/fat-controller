@@ -12,27 +12,8 @@ const COLOUR = {
 const abs = (amount: string) => amount.replace(/^-/, "")
 const negative = (amount: string) => amount.startsWith("-")
 
-/** One sentence per pair, so the gap reads the right way round. */
-function gapText(key: string, amount: string, rule: string) {
-  const by = formatPence(abs(amount))
-  const less = negative(amount)
-  if (amount === "0.00") return null
-  if (key === "estimate-reserve")
-    return less
-      ? `The reserve holds ${by} more than the estimate`
-      : `The reserve is ${by} short of the estimate`
-  if (key === "estimate-rule")
-    return less
-      ? `${rule} sets aside ${by} more than the estimate`
-      : `${rule} sets aside ${by} less than the estimate`
-  return less
-    ? `The reserve holds ${by} less than ${rule} says`
-    : `The reserve holds ${by} more than ${rule} says`
-}
-
 /** The estimate, the reserve and the rule on one scale, with each gap spelled out. */
 export function Compare({ compare }: { compare: ReserveCompare }) {
-  const rule = compare.bars.find((b) => b.key === "rule")?.label ?? "The rule"
   return (
     <section className="flex flex-col gap-4 rounded-lg border border-border bg-muted/40 p-3 md:p-4">
       <h2 className="font-heading text-base font-semibold">
@@ -52,29 +33,39 @@ export function Compare({ compare }: { compare: ReserveCompare }) {
               />
             </span>
             <span className="text-right font-mono text-sm font-semibold tabular-nums">
-              {formatPence(b.amount)}
+              {formatPence(b.amount)}{" "}
+              {/* Matches the under/over word below, so the figures line up. */}
+              <span aria-hidden className="inline-block w-10" />
             </span>
           </li>
         ))}
       </ul>
-      <ul className="flex flex-col gap-1 border-t border-border pt-3 text-sm">
+      <dl className="flex flex-col gap-1.5 border-t border-border pt-3 text-sm">
         {compare.gaps.map((g) => {
-          const text = gapText(g.key, g.amount, rule)
+          const under = negative(g.amount)
+          const alarm = g.key === "reserve-estimate" && under
           return (
-            <li
+            <div
               key={g.key}
-              className={cn(
-                "tabular-nums",
-                g.key === "estimate-reserve" &&
-                  !negative(g.amount) &&
-                  "font-semibold text-destructive"
-              )}
+              className="grid grid-cols-[minmax(0,10rem)_1fr_auto] items-baseline gap-3"
             >
-              {text ?? `${g.label}: no difference`}
-            </li>
+              <dt className="text-muted-foreground">{g.label}</dt>
+              <span />
+              <dd
+                className={cn(
+                  "text-right tabular-nums",
+                  alarm && "font-semibold text-destructive"
+                )}
+              >
+                <span className="font-mono">{formatPence(abs(g.amount))}</span>{" "}
+                <span className="inline-block w-10 text-left text-xs">
+                  {g.amount === "0.00" ? "level" : under ? "under" : "over"}
+                </span>
+              </dd>
+            </div>
           )
         })}
-      </ul>
+      </dl>
       <p className="text-xs text-muted-foreground">
         For the years not ticked as paid. The reserve balance is from the last
         Xero sync.

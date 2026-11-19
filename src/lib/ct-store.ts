@@ -40,7 +40,7 @@ export type CompareBar = {
 
 export type ReserveCompare = {
   bars: CompareBar[]
-  /** Each pair's difference, first less second: estimate − reserve and so on. */
+  /** Each pair's difference, first less second: negative means the first is under. */
   gaps: { key: string; label: string; amount: string }[]
 }
 
@@ -183,6 +183,7 @@ export async function getCorporationTaxPage(): Promise<CtPage | null> {
     result.taxReserveBalance === null
       ? null
       : new Decimal(result.taxReserveBalance)
+  const ruleName = `${Math.round(settings.ct_set_aside_rate * 100)}% rule`
   const figures = [
     {
       key: "estimate" as const,
@@ -200,7 +201,7 @@ export async function getCorporationTaxPage(): Promise<CtPage | null> {
       : []),
     {
       key: "rule" as const,
-      label: `The ${Math.round(settings.ct_set_aside_rate * 100)}% rule`,
+      label: `The ${ruleName}`,
       amount: rule,
     },
   ]
@@ -217,22 +218,22 @@ export async function getCorporationTaxPage(): Promise<CtPage | null> {
       ...(reserve
         ? [
             {
-              key: "estimate-reserve",
-              label: "Estimate vs reserve",
-              amount: gap(owed, reserve),
+              key: "reserve-estimate",
+              label: "Reserve vs estimate",
+              amount: gap(reserve, owed),
             },
           ]
         : []),
       {
-        key: "estimate-rule",
-        label: "Estimate vs the rule",
-        amount: gap(owed, rule),
+        key: "rule-estimate",
+        label: `${ruleName} vs estimate`,
+        amount: gap(rule, owed),
       },
       ...(reserve
         ? [
             {
               key: "reserve-rule",
-              label: "Reserve vs the rule",
+              label: `Reserve vs ${ruleName}`,
               amount: gap(reserve, rule),
             },
           ]
