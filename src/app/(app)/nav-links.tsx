@@ -11,6 +11,12 @@ const nav = [
   { href: "/clients", label: "Clients", periodic: true },
   { href: "/staff", label: "Staff", periodic: true },
   { href: "/forecast", label: "Forecast", periodic: false },
+  {
+    href: "/corporation-tax",
+    label: "Corporation tax",
+    short: "CT",
+    periodic: false,
+  },
   { href: "/settings", label: "Settings", periodic: false },
 ]
 
@@ -55,7 +61,7 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Main"
-      className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] text-xs backdrop-blur-md md:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] text-xs backdrop-blur-md md:hidden"
     >
       {nav.map((n) => {
         const active =
@@ -74,7 +80,7 @@ export function BottomNav() {
               active && "bg-violet-500/20 text-violet-100"
             )}
           >
-            {n.label}
+            {"short" in n ? n.short : n.label}
           </Link>
         )
       })}

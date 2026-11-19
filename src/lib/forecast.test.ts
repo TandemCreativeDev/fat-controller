@@ -8,6 +8,7 @@ import {
   inOutMonths,
   mergeDay,
   overviewBuckets,
+  paidByDay,
   paidView,
   timelineView,
 } from "./forecast-views"
@@ -3251,6 +3252,17 @@ describe("paid invoices", () => {
     })
     expect(years.map((y) => y.total)).toEqual(["50.00", "200.00"])
     expect(owed).toBe("250.00")
+
+    expect(
+      paidByDay([...years[0].invoices, ...years[1].invoices]).map((d) => [
+        d.paidOn,
+        d.setAside,
+        d.invoices.length,
+      ])
+    ).toEqual([
+      ["2026-05-20", "50.00", 1],
+      ["2026-04-28", "200.00", 1],
+    ])
 
     const paid = paidView(r, ["2025-05-01"])
     expect(paid.years.map((y) => y.ctPaid)).toEqual([false, true])

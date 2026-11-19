@@ -36,7 +36,6 @@ import {
   billBuckets,
   earlierMonths,
   overviewBuckets,
-  paidView,
   timelineView,
 } from "@/lib/forecast-views"
 import { getForecastPage, type ForecastPageData } from "@/lib/forecast-store"
@@ -54,14 +53,12 @@ import { AdjustmentsTable } from "./cash-tables"
 import { EarlierMonthCard, OverviewBucketCard } from "./overview-buckets"
 import { CopyButton } from "./copy-button"
 import { MoneyInBuckets } from "./money-in-buckets"
-import { PaidBuckets } from "./paid-buckets"
 import { RunningCosts } from "./running-costs"
 import { Timeline } from "./timeline"
 
 const TABS = [
   { key: "overview", label: "Overview" },
   { key: "money-in", label: "Money in" },
-  { key: "paid", label: "Paid" },
   { key: "bills", label: "Bills and cash" },
   { key: "running-costs", label: "Running costs" },
   { key: "timeline", label: "Timeline" },
@@ -231,10 +228,6 @@ function OverviewTab({ data }: { data: Ready }) {
 function MoneyInTab({ data }: { data: Ready }) {
   const { months, later } = payoutBuckets(data.result, formatMoney)
   return <MoneyInBuckets months={months} later={later} />
-}
-
-function PaidTab({ data }: { data: Ready }) {
-  return <PaidBuckets view={paidView(data.result, data.ctPaidYears)} />
 }
 
 function BillsTab({ data }: { data: Ready }) {
@@ -526,7 +519,6 @@ export default async function ForecastPage({
         )}
         {tab === "overview" && <OverviewTab data={data} />}
         {tab === "money-in" && <MoneyInTab data={data} />}
-        {tab === "paid" && <PaidTab data={data} />}
         {tab === "bills" && <BillsTab data={data} />}
         {tab === "running-costs" && (
           <RunningCosts tally={data.result.runningCosts} />

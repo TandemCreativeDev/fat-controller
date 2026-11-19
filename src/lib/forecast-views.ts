@@ -839,3 +839,23 @@ export function paidView(result: Ready, ctPaidYears: string[]): PaidView {
     years,
   }
 }
+
+export type PaidDay = {
+  paidOn: string
+  setAside: string
+  invoices: PaidInvoice[]
+}
+
+/** Paid invoices grouped by the day the money landed, latest first. */
+export function paidByDay(invoices: PaidInvoice[]): PaidDay[] {
+  const days = new Map<string, PaidInvoice[]>()
+  for (const i of invoices)
+    days.set(i.paidOn, [...(days.get(i.paidOn) ?? []), i])
+  return [...days.entries()]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([paidOn, list]) => ({
+      paidOn,
+      setAside: money(sum(list.map((i) => new D(i.setAside)))),
+      invoices: list,
+    }))
+}

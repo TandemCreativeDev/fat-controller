@@ -92,6 +92,13 @@ export const settingDefinitions = {
     schema: z.number().min(0).max(1),
     default: 0.2,
   },
+  ct_associated_companies: {
+    label: "Associated companies",
+    description:
+      "Other companies under the same control; they share the Corporation Tax limits.",
+    schema: z.int().min(0).max(50),
+    default: 0,
+  },
   ct_paid_years: {
     label: "Corporation Tax paid",
     description:
