@@ -90,7 +90,10 @@ export const project = pgTable("project", {
     .default(sql`'{}'`),
   paymentTermsDays: integer("payment_terms_days").notNull().default(30),
   /** The client pays for at most this many days on one invoice; null is no cap. */
-  maxDaysPerInvoice: numeric("max_days_per_invoice", { precision: 10, scale: 4 }),
+  maxDaysPerInvoice: numeric("max_days_per_invoice", {
+    precision: 10,
+    scale: 4,
+  }),
   active: boolean("active").notNull().default(true),
 })
 

@@ -122,7 +122,9 @@ function ProjectForm({
               hint="Optional. The client won't pay for more"
               inputMode="decimal"
               defaultValue={
-                row?.maxDaysPerInvoice ? String(Number(row.maxDaysPerInvoice)) : ""
+                row?.maxDaysPerInvoice
+                  ? String(Number(row.maxDaysPerInvoice))
+                  : ""
               }
             />
           </div>
