@@ -48,7 +48,7 @@ export function PaidInvoices({ year }: { year: PaidYear }) {
               Paid {formatDayName(day.paidOn)}
             </span>
             <span className="tabular-nums">
-              <span className="text-muted-foreground">Set aside </span>
+              <span className="text-muted-foreground">To move </span>
               <span className="font-mono font-semibold">
                 {formatPence(day.setAside)}
               </span>

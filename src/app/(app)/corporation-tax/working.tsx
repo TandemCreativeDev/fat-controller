@@ -284,7 +284,7 @@ export function Working({
         </div>
       </Part>
 
-      <Part n={4} title="Set aside from invoices">
+      <Part n={4} title={`The ${formatPercent(setAsideRate)} rule`}>
         <Points>
           <li>
             Each paid invoice sets aside {formatPercent(setAsideRate)} (the rate

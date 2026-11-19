@@ -43,10 +43,11 @@ export default async function SetAsidesPage() {
     <div className="flex flex-col gap-4 md:gap-8">
       {header}
       <p className="max-w-2xl text-sm text-muted-foreground">
-        Each paid invoice sets aside {formatPercent(data.setAsideRate)} (the
-        rate in Settings) of its amount before VAT less contractor cost. It
-        leaves out salaries and running costs, so it&apos;s a running guide, not
-        the tax bill: see{" "}
+        Worked out for each paid invoice: {formatPercent(data.setAsideRate)}{" "}
+        (the rate in Settings) × (amount before VAT − contractor cost). These
+        are what to move, not transfers the app has seen. The rule leaves out
+        salaries, running costs and other income such as bank interest, so
+        it&apos;s a running guide, not the tax bill: see{" "}
         <Link href="/corporation-tax" className="underline underline-offset-4">
           Corporation tax
         </Link>{" "}
@@ -65,7 +66,7 @@ export default async function SetAsidesPage() {
               Financial year {formatMonth(y.start)} – {formatMonth(y.end)}
             </h2>
             <p className="text-right text-xs font-medium tracking-wide uppercase">
-              Set aside
+              To move at {formatPercent(data.setAsideRate)}
               <span className="block font-mono text-2xl font-semibold tracking-normal normal-case tabular-nums">
                 {formatPence(y.total)}
               </span>

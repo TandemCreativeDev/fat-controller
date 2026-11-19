@@ -30,13 +30,27 @@ export type CtYearRow = {
   paid: PaidYear | null
 }
 
+export type CompareBar = {
+  key: "estimate" | "reserve" | "rule"
+  label: string
+  amount: string
+  /** Width against the largest of the three, 0 to 100. */
+  percent: number
+}
+
+export type ReserveCompare = {
+  bars: CompareBar[]
+  /** Each pair's difference, first less second: estimate − reserve and so on. */
+  gaps: { key: string; label: string; amount: string }[]
+}
+
 export type CtPage = {
   years: CtYearRow[]
   /** Estimated CT for every year not ticked as paid. */
   owed: string
   taxReserveBalance: string | null
-  /** The reserve less what's owed: negative means it's short. */
-  reserveSpare: string | null
+  /** The three figures side by side, for the years not ticked as paid. */
+  compare: ReserveCompare
   setAsideRate: number
   associatedCompanies: number
 }
@@ -162,14 +176,75 @@ export async function getCorporationTaxPage(): Promise<CtPage | null> {
   const owed = years
     .filter((y) => !y.ctPaid)
     .reduce((t, y) => t.plus(y.estimate.ct), new Decimal(0))
+  const rule = years
+    .filter((y) => !y.ctPaid)
+    .reduce((t, y) => t.plus(y.setAside), new Decimal(0))
+  const reserve =
+    result.taxReserveBalance === null
+      ? null
+      : new Decimal(result.taxReserveBalance)
+  const figures = [
+    {
+      key: "estimate" as const,
+      label: "Should be (estimated CT)",
+      amount: owed,
+    },
+    ...(reserve
+      ? [
+          {
+            key: "reserve" as const,
+            label: "In the reserve now",
+            amount: reserve,
+          },
+        ]
+      : []),
+    {
+      key: "rule" as const,
+      label: `The ${Math.round(settings.ct_set_aside_rate * 100)}% rule`,
+      amount: rule,
+    },
+  ]
+  const top = Decimal.max(...figures.map((f) => f.amount), 1)
+  const gap = (a: Decimal, b: Decimal) => a.minus(b).toFixed(2)
+  const compare: ReserveCompare = {
+    bars: figures.map((f) => ({
+      key: f.key,
+      label: f.label,
+      amount: f.amount.toFixed(2),
+      percent: Decimal.max(f.amount, 0).div(top).times(100).toNumber(),
+    })),
+    gaps: [
+      ...(reserve
+        ? [
+            {
+              key: "estimate-reserve",
+              label: "Estimate vs reserve",
+              amount: gap(owed, reserve),
+            },
+          ]
+        : []),
+      {
+        key: "estimate-rule",
+        label: "Estimate vs the rule",
+        amount: gap(owed, rule),
+      },
+      ...(reserve
+        ? [
+            {
+              key: "reserve-rule",
+              label: "Reserve vs the rule",
+              amount: gap(reserve, rule),
+            },
+          ]
+        : []),
+    ],
+  }
+
   return {
     years,
+    compare,
     owed: owed.toFixed(2),
     taxReserveBalance: result.taxReserveBalance,
-    reserveSpare:
-      result.taxReserveBalance === null
-        ? null
-        : new Decimal(result.taxReserveBalance).minus(owed).toFixed(2),
     setAsideRate: settings.ct_set_aside_rate,
     associatedCompanies: settings.ct_associated_companies,
   }

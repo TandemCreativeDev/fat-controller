@@ -2,7 +2,6 @@ import Link from "next/link"
 
 import { PageHeader } from "@/components/page-header"
 import { SplitBar, SplitLegend } from "@/components/split-bar"
-import { StatRow, StatTile } from "@/components/stat-tile"
 import { Card, CardContent } from "@/components/ui/card"
 import type { CtBand } from "@/lib/corporation-tax"
 import { getCorporationTaxPage, type CtYearRow } from "@/lib/ct-store"
@@ -15,6 +14,7 @@ import {
 } from "@/lib/format"
 import { requireDirector } from "@/lib/session"
 import { cn } from "@/lib/utils"
+import { Compare } from "./compare"
 import { CtPaidBox } from "./ct-paid-box"
 import { Working } from "./working"
 
@@ -61,7 +61,7 @@ function Sum({ year }: { year: CtYearRow }) {
   )
 }
 
-function YearCard({ year }: { year: CtYearRow }) {
+function YearCard({ year, rate }: { year: CtYearRow; rate: string }) {
   const e = year.estimate
   const label = yearLabel(year)
   const short = sign(year.short) > 0
@@ -117,12 +117,18 @@ function YearCard({ year }: { year: CtYearRow }) {
         <Sum year={year} />
         <div className="flex flex-col gap-1 text-sm tabular-nums">
           <p className="flex justify-between gap-4">
-            <Link
-              href="/set-asides"
-              className="text-muted-foreground underline decoration-muted-foreground underline-offset-4 hover:text-foreground"
-            >
-              Set aside from invoices
-            </Link>
+            <span>
+              <Link
+                href="/set-asides"
+                className="text-muted-foreground underline decoration-muted-foreground underline-offset-4 hover:text-foreground"
+              >
+                The {rate} rule
+              </Link>
+              <span className="block text-xs text-muted-foreground">
+                {rate} × (invoice before VAT − contractor cost), for each paid
+                invoice
+              </span>
+            </span>
             {formatPence(year.setAside)}
           </p>
           <p
@@ -131,7 +137,9 @@ function YearCard({ year }: { year: CtYearRow }) {
               short ? "text-destructive" : "text-success"
             )}
           >
-            <span>{short ? "Short by" : "Ahead by"}</span>
+            <span>
+              {short ? "Estimate is higher by" : "Estimate is lower by"}
+            </span>
             {formatPence(abs(year.short))}
           </p>
           {year.paid?.countedFrom && (
@@ -152,7 +160,7 @@ export default async function CorporationTaxPage() {
   const header = (
     <PageHeader
       title="Corporation tax"
-      lede="What each financial year owes, estimated from the books, and what's been set aside."
+      lede="What each financial year owes, estimated from the books."
     />
   )
 
@@ -172,55 +180,28 @@ export default async function CorporationTaxPage() {
       </div>
     )
 
-  const open = data.years.filter((y) => !y.ctPaid)
-  const spare = data.reserveSpare
   return (
     <div className="flex flex-col gap-4 md:gap-8">
       {header}
-      <StatRow>
-        <StatTile
-          label="Should be in the tax reserve"
-          value={formatPence(data.owed)}
-          sub={
-            open.length === 0
-              ? "Every year's CT is ticked as paid"
-              : `Estimated CT for ${open.map(yearLabel).join(" and ")}`
-          }
-          accent
-        />
-        {data.taxReserveBalance !== null && (
-          <StatTile
-            label="Tax reserve now"
-            value={formatPence(data.taxReserveBalance)}
-            sub="From the last Xero sync"
-          />
-        )}
-        {spare !== null && (
-          <StatTile
-            label={
-              sign(spare) < 0 ? "Reserve is short by" : "Reserve is ahead by"
-            }
-            value={formatPence(abs(spare))}
-            sub={
-              sign(spare) < 0
-                ? "Move this in to cover the estimate"
-                : "More than the estimate needs"
-            }
-          />
-        )}
-      </StatRow>
+      <Compare compare={data.compare} />
       <p className="text-sm text-muted-foreground">
         Estimated from the books: sales less costs, with equipment deducted in
         full. Corporation Tax is 19% on profit up to £50,000, 25% from £250,000,
         and in between 25% less marginal relief. Your accountant&apos;s figure
-        is the final one. Each year compares the estimate with what&apos;s been{" "}
+        is the final one. Each year compares the estimate with the{" "}
         <Link href="/set-asides" className="underline underline-offset-4">
-          set aside from invoices
-        </Link>
-        . Tick a year once its CT is paid.
+          {formatPercent(data.setAsideRate)} rule
+        </Link>{" "}
+        ({formatPercent(data.setAsideRate)} of each paid invoice&apos;s amount
+        before VAT less contractor cost), which is worked out, not what&apos;s
+        actually been moved. Tick a year once its CT is paid.
       </p>
       {data.years.map((y) => (
-        <YearCard key={y.start} year={y} />
+        <YearCard
+          key={y.start}
+          year={y}
+          rate={formatPercent(data.setAsideRate)}
+        />
       ))}
       <Working
         years={data.years}
