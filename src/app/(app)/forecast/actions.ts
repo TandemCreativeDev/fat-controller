@@ -31,6 +31,7 @@ import {
   optionalInt,
 } from "@/lib/form"
 import { requireDirector } from "@/lib/session"
+import { getSettings, saveSetting } from "@/lib/settings-store"
 
 const refresh = () => revalidatePath("/forecast")
 const form = (data: FormData) => Object.fromEntries(data)
@@ -534,4 +535,28 @@ export async function clearManualBalance(): Promise<FormState> {
     )
   refresh()
   return { ok: true, message: "Cleared." }
+}
+
+// ------------------------------------------------------------------ corporation tax
+
+const ctPaidForm = z.object({
+  yearStart: z.iso.date(),
+  paid: z.enum(["true", "false"]),
+})
+
+/** Tick a financial year's Corporation Tax as paid, or untick it. */
+export async function setCtPaid(
+  _prev: FormState,
+  data: FormData
+): Promise<FormState> {
+  const director = await requireDirector()
+  const parsed = ctPaidForm.safeParse(form(data))
+  if (!parsed.success) return { ok: false, message: firstError(parsed.error) }
+  const { yearStart, paid } = parsed.data
+  const years = new Set((await getSettings()).ct_paid_years)
+  if (paid === "true") years.add(yearStart)
+  else years.delete(yearStart)
+  await saveSetting("ct_paid_years", [...years].sort(), director.id)
+  refresh()
+  return saved
 }

@@ -1,6 +1,7 @@
 import Decimal from "decimal.js"
 
 import {
+  financialYearOf,
   monthEnd,
   monthStart,
   timelineMonths,
@@ -729,5 +730,112 @@ export function timelineView(result: Ready): TimelineView {
         }),
       }
     }),
+  }
+}
+
+// ------------------------------------------------------------------ paid
+
+export type PaidInvoice = {
+  invoiceId: string
+  /** The latest payment against it. */
+  paidOn: string
+  invoiceNumber: string | null
+  title: string
+  clientName: string | null
+  /** Received so far, with VAT. */
+  paid: string
+  netAmount: string
+  contractorCost: string
+  profit: string
+  /** On what's been received: the whole set-aside once it's fully paid. */
+  setAside: string
+  partPaid: boolean
+  /** Raised after tracking began, yet no tracked time matched it, so no contractor cost. */
+  noCostMatched: boolean
+}
+
+export type PaidYear = {
+  /** The financial year's first and last days. */
+  start: string
+  end: string
+  /** Payments only count from the forecast start date, so an earlier year is part-counted. */
+  countedFrom: string | null
+  total: string
+  /** A director ticked this year's CT as paid. */
+  ctPaid: boolean
+  invoices: PaidInvoice[]
+}
+
+export type PaidView = {
+  /** What should be in the tax reserve: every year whose CT isn't paid yet. */
+  owed: string
+  years: PaidYear[]
+}
+
+/**
+ * Invoices paid since the forecast start date by financial year, latest first,
+ * with the CT set-aside each brings in. A part-paid invoice brings in its share so
+ * far, and sits in the year of its latest payment.
+ */
+export function paidView(result: Ready, ctPaidYears: string[]): PaidView {
+  const byId = new Map(
+    result.invoices
+      .filter((i) => i.invoiceId !== null)
+      .map((i) => [i.invoiceId!, i])
+  )
+  const paid = new Map<string, { amount: Dec; on: string }>()
+  for (const p of result.invoicePayments) {
+    const so = paid.get(p.invoiceId)
+    paid.set(p.invoiceId, {
+      amount: (so?.amount ?? ZERO).plus(p.amount),
+      on: so && so.on > p.paidOn ? so.on : p.paidOn,
+    })
+  }
+
+  const invoices: PaidInvoice[] = [...paid.entries()].flatMap(([id, p]) => {
+    const inv = byId.get(id)
+    if (!inv) return []
+    const total = new D(inv.total)
+    const share = total.isZero() ? new D(1) : D.min(p.amount.div(total), 1)
+    return [
+      {
+        invoiceId: id,
+        paidOn: p.on,
+        invoiceNumber: inv.invoiceNumber,
+        title:
+          inv.projectName ?? inv.clientName ?? inv.invoiceNumber ?? "Invoice",
+        clientName: inv.clientName ?? null,
+        paid: money(p.amount),
+        netAmount: inv.amount,
+        contractorCost: inv.contractorCost,
+        profit: money(new D(inv.amount).minus(inv.contractorCost)),
+        setAside: money(new D(inv.setAside).times(share)),
+        partPaid: p.amount.lt(total),
+        noCostMatched: !inv.linked && inv.invoiceDate >= result.trackingFrom,
+      },
+    ]
+  })
+  invoices.sort(
+    (a, b) =>
+      b.paidOn.localeCompare(a.paidOn) ||
+      (b.invoiceNumber ?? "").localeCompare(a.invoiceNumber ?? "")
+  )
+  const byYear = new Map<string, PaidInvoice[]>()
+  for (const i of invoices) {
+    const { start } = financialYearOf(i.paidOn, result.financialYearStart)
+    byYear.set(start, [...(byYear.get(start) ?? []), i])
+  }
+  const years: PaidYear[] = [...byYear.entries()]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([start, list]) => ({
+      ...financialYearOf(start, result.financialYearStart),
+      countedFrom: start < result.paymentsFrom ? result.paymentsFrom : null,
+      total: money(sum(list.map((i) => new D(i.setAside)))),
+      ctPaid: ctPaidYears.includes(start),
+      invoices: list,
+    }))
+  return {
+    owed: money(sum(years.filter((y) => !y.ctPaid).map((y) => new D(y.total)))),
+    years,
   }
 }

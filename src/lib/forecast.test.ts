@@ -8,6 +8,7 @@ import {
   inOutMonths,
   mergeDay,
   overviewBuckets,
+  paidView,
   timelineView,
 } from "./forecast-views"
 import {
@@ -160,6 +161,7 @@ function baseInput(overrides: Partial<ForecastInput> = {}): ForecastInput {
       directorSalaryGbp: 1000,
       startDate: "2026-04-21",
       vatRegisteredFrom: null,
+      financialYearStart: { month: 4, day: 1 },
       vatRate: 0.2,
     },
     holidays: [],
@@ -3176,5 +3178,110 @@ describe("days per month", () => {
         .reduce((t, i) => t + Number(i.row.totalDays), 0)
       expect(Number(b.days)).toBeCloseTo(expected, 2)
     }
+  })
+})
+
+describe("paid invoices", () => {
+  const pay = (id: string, date: string, amount: string): CashLine => ({
+    ...raw({
+      sourceId: `p-${id}-${date}`,
+      source: "payment",
+      direction: "in",
+      date,
+      amount,
+      salesInvoiceId: id,
+    }),
+    kind: "client_payment",
+    personId: null,
+  })
+  const invoice = (id: string, over: object = {}) => ({
+    invoiceId: id,
+    invoiceNumber: `ZZZ-${id}`,
+    invoiceDate: "2026-05-01",
+    dueDate: "2026-05-15",
+    subTotal: "1000.00",
+    totalTax: "200.00",
+    total: "1200.00",
+    outstanding: "0.00",
+    ...over,
+  })
+
+  it("groups paid invoices by financial year, and totals the years whose CT isn't paid", () => {
+    const r = run(
+      baseInput({
+        // The base year starts 1 April; tracking starts 21 April 2026.
+        invoices: [
+          invoice("x", { invoiceDate: "2026-03-01" }),
+          invoice("y", { outstanding: "900.00" }),
+        ],
+        cash: [
+          pay("x", "2026-04-28", "1200.00"),
+          pay("y", "2026-05-10", "100.00"),
+          pay("y", "2026-05-20", "200.00"),
+        ],
+        settings: {
+          ...baseInput().settings,
+          financialYearStart: { month: 5, day: 1 },
+        },
+      })
+    )
+    const { owed, years } = paidView(r, [])
+    expect(years.map((y) => [y.start, y.end, y.countedFrom])).toEqual([
+      ["2026-05-01", "2027-04-30", null],
+      ["2025-05-01", "2026-04-30", null],
+    ])
+    expect(years[1].invoices[0]).toMatchObject({
+      invoiceId: "x",
+      paid: "1200.00",
+      netAmount: "1000.00",
+      contractorCost: "0.00",
+      profit: "1000.00",
+      setAside: "200.00",
+      partPaid: false,
+      // Raised before tracking began, when there were no contractors.
+      noCostMatched: false,
+    })
+    // £300 of £1,200 received: a quarter of the £200 set-aside so far.
+    expect(years[0].invoices[0]).toMatchObject({
+      invoiceId: "y",
+      paidOn: "2026-05-20",
+      paid: "300.00",
+      setAside: "50.00",
+      partPaid: true,
+    })
+    expect(years.map((y) => y.total)).toEqual(["50.00", "200.00"])
+    expect(owed).toBe("250.00")
+
+    const paid = paidView(r, ["2025-05-01"])
+    expect(paid.years.map((y) => y.ctPaid)).toEqual([false, true])
+    expect(paid.owed).toBe("50.00")
+  })
+
+  it("counts from the start of the financial year tracking began in", () => {
+    // Tracking began 21 April 2026, in the year from 1 April 2026.
+    const r = run(
+      baseInput({
+        invoices: [
+          invoice("before", { invoiceDate: "2026-03-01" }),
+          invoice("early", { invoiceDate: "2026-03-20" }),
+          invoice("after", { invoiceDate: "2026-05-01" }),
+        ],
+        cash: [],
+        paymentHistory: [
+          pay("before", "2026-03-31", "1200.00"),
+          pay("early", "2026-04-05", "1200.00"),
+          pay("after", "2026-05-10", "1200.00"),
+        ],
+      })
+    )
+    const { years } = paidView(r, [])
+    expect(r.paymentsFrom).toBe("2026-04-01")
+    expect(years).toHaveLength(1)
+    expect(
+      years[0].invoices.map((i) => [i.invoiceId, i.noCostMatched])
+    ).toEqual([
+      ["after", true],
+      ["early", false],
+    ])
   })
 })

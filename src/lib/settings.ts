@@ -92,6 +92,13 @@ export const settingDefinitions = {
     schema: z.number().min(0).max(1),
     default: 0.2,
   },
+  ct_paid_years: {
+    label: "Corporation Tax paid",
+    description:
+      "Financial years whose CT is paid, by their first day; their set-asides leave the total.",
+    schema: z.array(z.iso.date()).max(100),
+    default: [],
+  },
   solidtime_token_expires_at: {
     label: "Solidtime token expiry",
     description: "Read from Solidtime's token list on each sync.",

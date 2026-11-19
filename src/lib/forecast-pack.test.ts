@@ -16,6 +16,7 @@ const input: ForecastInput = {
     directorSalaryGbp: 0,
     startDate: "2026-04-21",
     vatRegisteredFrom: null,
+    financialYearStart: { month: 4, day: 1 },
     vatRate: 0.2,
   },
   holidays: [],

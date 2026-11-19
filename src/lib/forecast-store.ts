@@ -40,6 +40,7 @@ import {
   addMonths,
   bankTransactionCashLines,
   classifyCashLine,
+  financialYearOf,
   londonDate,
   monthStart,
   paymentCashLine,
@@ -279,6 +280,10 @@ export async function loadForecastInput(
 
   const threeMonthsBack = addMonths(monthStart(today), -3)
   const since = startDate < threeMonthsBack ? startDate : threeMonthsBack
+  const paymentsSince = financialYearOf(
+    startDate,
+    settings.financial_year_start
+  ).start
 
   const [
     projects,
@@ -289,6 +294,7 @@ export async function loadForecastInput(
     invoices,
     overrides,
     cash,
+    history,
     bills,
     adjustments,
     holdBacks,
@@ -319,6 +325,7 @@ export async function loadForecastInput(
     db.select().from(vForecastSalesInvoice),
     db.select().from(forecastOverride),
     loadCashLines(settings, since),
+    loadCashLines(settings, paymentsSince),
     db.select().from(contractorBill),
     db.select().from(cashAdjustment),
     db.select().from(holdBack),
@@ -388,6 +395,7 @@ export async function loadForecastInput(
       startDate,
       vatRegisteredFrom: settings.vat_registered_from,
       vatRate: settings.vat_rate,
+      financialYearStart: settings.financial_year_start,
     },
     holidays: holidays.map((h) => h.date),
     lastXeroSync: cursor[0]?.at ? londonDate(cursor[0].at) : null,
@@ -439,6 +447,7 @@ export async function loadForecastInput(
       note: o.note,
     })),
     cash,
+    paymentHistory: history.filter((l) => l.kind === "client_payment"),
     bills: stored,
     adjustments: adjustments.map((a) => ({
       date: a.date,
@@ -498,6 +507,8 @@ export type ForecastPageData = {
   warnings: PageWarning[]
   accuracy: AccuracyRow[]
   settings: ForecastSettings | null
+  /** Financial years whose CT is paid, by their first day. */
+  ctPaidYears: string[]
   manualBalance: string | null
   xeroClosing: string | null
   operatingAccountId: string | null
@@ -654,6 +665,7 @@ export async function getForecastPage(): Promise<ForecastPageData> {
     ],
     accuracy,
     settings: input?.settings ?? null,
+    ctPaidYears: settings.ct_paid_years,
     manualBalance: input?.manualBalance ?? null,
     xeroClosing: input?.balance?.closing ?? null,
     operatingAccountId: accountsWith(settings, "operating")[0] ?? null,

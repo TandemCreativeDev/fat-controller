@@ -129,6 +129,8 @@ export type ForecastSettings = {
   startDate: string
   vatRegisteredFrom: string | null
   vatRate: number | string
+  /** Day and month the company's financial year, and so its CT year, begins. */
+  financialYearStart: { month: number; day: number }
 }
 
 export type ProjectInput = {
@@ -614,6 +616,11 @@ export type ForecastInput = {
   overrides: OverrideInput[]
   /** Classified lines from at least three complete months before this one. */
   cash: CashLine[]
+  /**
+   * Client payments from the start of the financial year the forecast starts in,
+   * for the Corporation Tax view; cash covers it when this is left out.
+   */
+  paymentHistory?: CashLine[]
   bills: StoredBill[]
   adjustments: { date: string; label: string; amountGbp: string }[]
   holdBacks: { month: string; amountGbp: string }[]
@@ -649,6 +656,15 @@ export type CashMonth = {
   clients: { label: string; amount: string }[]
 }
 
+export type InvoicePayment = {
+  invoiceId: string
+  paidOn: string
+  /** With VAT, as it reached the bank; negative for a refund. */
+  amount: string
+}
+
+export type FinancialYear = { start: string; end: string }
+
 export type ForecastResult =
   | { blocked: true; missingDefaultRate: string[] }
   | {
@@ -656,6 +672,14 @@ export type ForecastResult =
       today: string
       months: MonthBreakdown[]
       invoices: BuiltInvoice[]
+      /** Day and month each financial year, and so each CT year, begins. */
+      financialYearStart: { month: number; day: number }
+      /** Client payments against sales invoices, from paymentsFrom to today. */
+      invoicePayments: InvoicePayment[]
+      /** The start of the financial year the forecast start date falls in. */
+      paymentsFrom: string
+      /** The forecast start date: no contractors worked before it. */
+      trackingFrom: string
       expectedMoney: ExpectedMoney[]
       bills: BillPlan[]
       timeline: TimelineEvent[]
@@ -1072,8 +1096,8 @@ function buildInvoices(
           hasAmount || hasDays
             ? "override"
             : forecast.isZero()
-            ? "tracked"
-            : "forecast",
+              ? "tracked"
+              : "forecast",
         hasOverride: Boolean(override),
         overrideDays: override?.days ?? null,
         overrideAmount: override?.amountGbp ?? null,
@@ -2558,6 +2582,10 @@ export function runForecast(input: ForecastInput): ForecastResult {
     today,
     months,
     invoices: invoices.map(stripBuilt),
+    financialYearStart: settings.financialYearStart,
+    invoicePayments: invoicePayments(input, paymentsFrom(settings)),
+    paymentsFrom: paymentsFrom(settings),
+    trackingFrom: settings.startDate,
     expectedMoney: expectedMoney(input, invoices, displayEnd),
     bills: billPlans.filter((b) => b.issuedOn <= displayEnd),
     timeline,
@@ -2578,6 +2606,41 @@ export function runForecast(input: ForecastInput): ForecastResult {
       .map((p) => p.name)
       .sort((a, b) => a.localeCompare(b)),
   }
+}
+
+/** The financial year a date falls in. */
+export function financialYearOf(
+  date: string,
+  yearStart: { month: number; day: number }
+): FinancialYear {
+  const on = (year: number) =>
+    `${year}-${String(yearStart.month).padStart(2, "0")}-${String(yearStart.day).padStart(2, "0")}`
+  const year = Number(date.slice(0, 4))
+  const start = on(year) <= date ? on(year) : on(year - 1)
+  return { start, end: addDays(on(Number(start.slice(0, 4)) + 1), -1) }
+}
+
+/** Payments count from the start of the financial year tracking began in. */
+export const paymentsFrom = (settings: ForecastSettings) =>
+  financialYearOf(settings.startDate, settings.financialYearStart).start
+
+function invoicePayments(input: ForecastInput, from: string): InvoicePayment[] {
+  return (input.paymentHistory ?? input.cash)
+    .filter(
+      (l) =>
+        l.kind === "client_payment" &&
+        l.salesInvoiceId !== null &&
+        l.date >= from &&
+        l.date <= input.today
+    )
+    .map((l) => ({
+      invoiceId: l.salesInvoiceId!,
+      paidOn: l.date,
+      amount: money(
+        l.direction === "in" ? new D(l.amount) : new D(l.amount).negated()
+      ),
+    }))
+    .sort((a, b) => a.paidOn.localeCompare(b.paidOn))
 }
 
 function stripBuilt(b: Built): BuiltInvoice {
