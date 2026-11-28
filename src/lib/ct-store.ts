@@ -42,6 +42,8 @@ export type ReserveCompare = {
   bars: CompareBar[]
   /** Each pair's difference, first less second: negative means the first is under. */
   gaps: { key: string; label: string; amount: string }[]
+  /** Borrowed from the reserve and not paid back yet: part of why it's short. */
+  reserveOwed: string
 }
 
 export type CtPage = {
@@ -208,6 +210,7 @@ export async function getCorporationTaxPage(): Promise<CtPage | null> {
   const top = Decimal.max(...figures.map((f) => f.amount), 1)
   const gap = (a: Decimal, b: Decimal) => a.minus(b).toFixed(2)
   const compare: ReserveCompare = {
+    reserveOwed: result.reserveOwed,
     bars: figures.map((f) => ({
       key: f.key,
       label: f.label,

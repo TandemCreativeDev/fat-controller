@@ -66,6 +66,12 @@ export function Compare({ compare }: { compare: ReserveCompare }) {
           )
         })}
       </dl>
+      {compare.reserveOwed !== "0.00" && (
+        <p className="text-sm">
+          {formatPence(compare.reserveOwed)} of the reserve is borrowed and not
+          paid back yet.
+        </p>
+      )}
       <p className="text-xs text-muted-foreground">
         For the years not ticked as paid. The reserve balance is from the last
         Xero sync.
