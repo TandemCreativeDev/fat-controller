@@ -7,10 +7,10 @@ import { cn } from "@/lib/utils"
 
 // Dashboard pages share the period switch, so the chosen period follows the nav.
 const nav = [
-  { href: "/", label: "P&L", periodic: true },
+  { href: "/forecast", label: "Forecast", periodic: false },
+  { href: "/pnl", label: "P&L", periodic: true },
   { href: "/clients", label: "Clients", periodic: true },
   { href: "/staff", label: "Staff", periodic: true },
-  { href: "/forecast", label: "Forecast", periodic: false },
   {
     href: "/set-asides",
     label: "Set-asides",
@@ -35,8 +35,7 @@ export function NavLinks() {
       className="hidden gap-1 rounded-xl bg-black/30 p-1 text-sm ring-1 ring-border md:flex"
     >
       {nav.map((n) => {
-        const active =
-          n.href === "/" ? pathname === "/" : pathname.startsWith(n.href)
+        const active = pathname.startsWith(n.href)
         return (
           <Link
             key={n.href}
@@ -70,8 +69,7 @@ export function BottomNav() {
       className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-7 border-t border-border bg-background/95 pb-[env(safe-area-inset-bottom)] text-xs backdrop-blur-md md:hidden"
     >
       {nav.map((n) => {
-        const active =
-          n.href === "/" ? pathname === "/" : pathname.startsWith(n.href)
+        const active = pathname.startsWith(n.href)
         return (
           <Link
             key={n.href}
