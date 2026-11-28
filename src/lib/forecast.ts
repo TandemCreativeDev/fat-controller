@@ -632,6 +632,8 @@ export type ForecastInput = {
   holdBacks: { month: string; amountGbp: string }[]
   /** How much of what's borrowed from the tax reserve to repay, by month. */
   reserveRepayments: { month: string; amountGbp: string }[]
+  /** Withdrawals from the reserve marked as corrections, by source ID. */
+  reserveCorrections: string[]
   /** Xero's balance on the operating account(s): the 1st of this month, and today. */
   balance: { opening: string; closing: string } | null
   /** A director's real balance for today, if entered. */
@@ -699,6 +701,8 @@ export type ForecastResult =
       taxReserveBalance: string | null
       /** Borrowed from the tax reserve and not paid back yet. */
       reserveOwed: string
+      /** Every withdrawal from the reserve since the forecast began. */
+      reserveWithdrawals: ReserveWithdrawal[]
       directorCount: number
       /** Salaries a month, all directors together. */
       salaryPerMonth: string
@@ -1503,11 +1507,22 @@ type Prepared = {
   vatOwedOn: (date: string) => Dec
   /** Borrowed from the tax reserve and not paid back, as of today. */
   reserveOwed: Dec
+  reserveWithdrawals: ReserveWithdrawal[]
   /** Each month's repayment of what's borrowed from the reserve. */
   reserveRepayments: Map<string, ReserveRepaymentPlan>
   firstDay: string
   lastDay: string
   displayEnd: string
+}
+
+export type ReserveWithdrawal = {
+  /** The Xero bank transaction ID. */
+  sourceId: string
+  date: string
+  amount: string
+  description: string | null
+  /** A director marked it as undoing a transfer, not borrowing. */
+  correction: boolean
 }
 
 type ReserveRepaymentPlan = {
@@ -1893,10 +1908,26 @@ function prepare(
   // -------- set-asides and money borrowed from the reserve
   // Transfers to the reserve settle set-asides on money that has landed first,
   // then what was borrowed from the reserve, then set-asides on money expected.
-  let credit = sum(
-    cash
-      .filter((l) => l.kind === "set_aside" && l.date >= settings.startDate)
-      .map((l) => new D(l.amount))
+  // A withdrawal a director marked as a correction isn't borrowing: it undid a
+  // transfer in (a mistake put straight back, or too much moved across), so it
+  // cancels that much of the transfers instead.
+  const corrected = new Set(input.reserveCorrections)
+  const withdrawals = cash.filter(
+    (l) => l.kind === "backstop_in" && l.date >= settings.startDate
+  )
+  let credit = D.max(
+    sum(
+      cash
+        .filter((l) => l.kind === "set_aside" && l.date >= settings.startDate)
+        .map((l) => new D(l.amount))
+    ).minus(
+      sum(
+        withdrawals
+          .filter((l) => corrected.has(l.sourceId))
+          .map((l) => new D(l.amount))
+      )
+    ),
+    ZERO
   )
   const scheduled: { owedOn: string; moveOn: string; amount: Dec }[] = []
   const settle = (list: Owed[]) => {
@@ -1923,8 +1954,8 @@ function prepare(
   }
   settle(owed.filter((o) => o.landed))
   const borrowed = sum(
-    cash
-      .filter((l) => l.kind === "backstop_in" && l.date >= settings.startDate)
+    withdrawals
+      .filter((l) => !corrected.has(l.sourceId))
       .map((l) => new D(l.amount))
   )
   const repaidSoFar = D.min(credit, borrowed)
@@ -2098,6 +2129,15 @@ function prepare(
     vatOwedOn: (date) =>
       sum(vatItems.filter((v) => v.date <= date).map((v) => v.amount)),
     reserveOwed,
+    reserveWithdrawals: withdrawals
+      .map((l) => ({
+        sourceId: l.sourceId,
+        date: l.date,
+        amount: money(new D(l.amount)),
+        description: l.description,
+        correction: corrected.has(l.sourceId),
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date)),
     reserveRepayments,
     firstDay,
     lastDay,
@@ -2669,6 +2709,7 @@ export function runForecast(input: ForecastInput): ForecastResult {
     buffer: money(settings.bufferGbp),
     taxReserveBalance: input.taxReserveBalance,
     reserveOwed: money(prepared.reserveOwed),
+    reserveWithdrawals: prepared.reserveWithdrawals,
     directorCount: directorCount(input),
     salaryPerMonth: money(
       new D(settings.directorSalaryGbp).times(

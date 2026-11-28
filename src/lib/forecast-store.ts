@@ -14,6 +14,7 @@ import {
   forecastSnapshot,
   holdBack,
   reserveRepayment,
+  reserveCorrection,
   invoiceExpectation,
   payRate,
   person,
@@ -300,6 +301,7 @@ export async function loadForecastInput(
     adjustments,
     holdBacks,
     repayments,
+    corrections,
     expectations,
     customInvoices,
     contacts,
@@ -332,6 +334,7 @@ export async function loadForecastInput(
     db.select().from(cashAdjustment),
     db.select().from(holdBack),
     db.select().from(reserveRepayment),
+    db.select({ id: reserveCorrection.sourceId }).from(reserveCorrection),
     db.select().from(invoiceExpectation),
     db.select().from(customInvoice),
     db
@@ -465,6 +468,7 @@ export async function loadForecastInput(
       month: r.month,
       amountGbp: r.amountGbp,
     })),
+    reserveCorrections: corrections.map((c) => c.id),
     balance:
       operatingRows.length > 0
         ? {

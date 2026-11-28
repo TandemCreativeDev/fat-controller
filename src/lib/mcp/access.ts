@@ -39,6 +39,7 @@ export const ALLOWED = [
   "person",
   "project",
   "project_solidtime",
+  "reserve_correction",
   "reserve_repayment",
   "running_cost_fixed",
   "running_cost_one_off",

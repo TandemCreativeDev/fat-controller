@@ -33,6 +33,7 @@ GRANT SELECT ON "pay_rate" TO fc_analyst;
 GRANT SELECT ON "person" TO fc_analyst;
 GRANT SELECT ON "project" TO fc_analyst;
 GRANT SELECT ON "project_solidtime" TO fc_analyst;
+GRANT SELECT ON "reserve_correction" TO fc_analyst;
 GRANT SELECT ON "reserve_repayment" TO fc_analyst;
 GRANT SELECT ON "running_cost_fixed" TO fc_analyst;
 GRANT SELECT ON "running_cost_one_off" TO fc_analyst;

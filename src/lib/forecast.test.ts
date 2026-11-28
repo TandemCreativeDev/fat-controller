@@ -202,6 +202,7 @@ function baseInput(overrides: Partial<ForecastInput> = {}): ForecastInput {
     ],
     holdBacks: [],
     reserveRepayments: [],
+    reserveCorrections: [],
     balance: { opening: "1000.00", closing: "1000.00" },
     manualBalance: null,
     taxReserveBalance: "5000.00",
@@ -1377,6 +1378,47 @@ describe("set-asides", () => {
       })
     )
     expect(r.reserveOwed).toBe("400.00")
+  })
+
+  it("leaves a withdrawal marked as a correction out of what's borrowed", () => {
+    const paid: CashLine = {
+      ...raw({
+        sourceId: "p",
+        source: "payment",
+        direction: "in",
+        date: "2026-05-15",
+        amount: "1000.00",
+      }),
+      kind: "client_payment",
+      personId: null,
+    }
+    const putBack: CashLine = {
+      ...raw({ sourceId: "t", date: "2026-05-11", amount: "500.00" }),
+      kind: "set_aside",
+      personId: null,
+    }
+    const input = baseInput({
+      ...noWork,
+      // A mistake put straight back, then a real 300 borrowed.
+      cash: [
+        paid,
+        back("2026-05-10", "500.00"),
+        putBack,
+        back("2026-05-20", "300.00"),
+      ],
+    })
+    // Unmarked, the 500 put back pays the 200 set-aside and 300 of the loans.
+    expect(run(input).reserveOwed).toBe("500.00")
+
+    const r = run({ ...input, reserveCorrections: ["back-2026-05-10"] })
+    // Marked: it and the 500 put back cancel. The 200 set-aside is still owed.
+    expect(r.reserveOwed).toBe("300.00")
+    expect(r.reserveWithdrawals).toEqual([
+      expect.objectContaining({ date: "2026-05-10", correction: true }),
+      expect.objectContaining({ date: "2026-05-20", correction: false }),
+    ])
+    const setAside = r.timeline.find((e) => e.type === "set_aside")
+    expect(setAside?.amount).toBe("-200.00")
   })
 })
 

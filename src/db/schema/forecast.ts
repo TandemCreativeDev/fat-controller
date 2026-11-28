@@ -264,6 +264,14 @@ export const reserveRepayment = pgTable("reserve_repayment", {
   createdBy: createdBy(),
 })
 
+/** A withdrawal from the tax reserve that undid a transfer in, so isn't borrowing. */
+export const reserveCorrection = pgTable("reserve_correction", {
+  /** The withdrawal's Xero bank transaction ID. */
+  sourceId: text("source_id").primaryKey(),
+  createdBy: createdBy(),
+  createdAt: tstz("created_at").notNull().defaultNow(),
+})
+
 export const cashAdjustment = pgTable("cash_adjustment", {
   id: uuid("id").primaryKey().defaultRandom(),
   date: date("date").notNull(),
