@@ -2381,6 +2381,45 @@ describe("payout buckets", () => {
   })
 })
 
+describe("salaries paid badge", () => {
+  // Two directors at 1,000 a month: 2,000 expected.
+  const salary = (date: string, amount: string, n = 1): CashLine => ({
+    ...raw({ sourceId: `salary-${date}-${n}`, date, amount }),
+    kind: "director_salary",
+    personId: null,
+  })
+  const status = (cash: CashLine[], months = 1) =>
+    overviewBuckets(
+      run(
+        baseInput({
+          today: "2026-06-20",
+          settings: { ...baseInput().settings, months },
+          cash: [...baseInput().cash, ...cash],
+        })
+      ),
+      (v) => v
+    ).map((b) => b.salaries)
+
+  it("says when this month's salaries went out", () => {
+    expect(
+      status([
+        salary("2026-06-15", "1000.00"),
+        salary("2026-06-16", "1000.00", 2),
+      ])
+    ).toEqual([{ status: "paid", on: "2026-06-16" }])
+  })
+
+  it("flags a part-paid month", () => {
+    expect(status([salary("2026-06-15", "1000.00")])).toEqual([
+      { status: "part", paid: "1000.00", expected: "2000.00" },
+    ])
+  })
+
+  it("flags only the current month as not paid yet", () => {
+    expect(status([], 2)).toEqual([{ status: "due" }, null])
+  })
+})
+
 describe("in and out", () => {
   const line = (
     kind: CashLine["kind"],

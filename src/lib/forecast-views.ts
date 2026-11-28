@@ -244,6 +244,8 @@ export type OverviewBucket = MonthSum & {
   takeHome: string
   /** What the take-home is made of, in words. */
   takeHomeNote: string
+  /** Whether this month's director salaries have gone out yet. */
+  salaries: SalaryStatus | null
   /** All directors together. */
   payout: string
   closing: string
@@ -271,6 +273,29 @@ export type OverviewBucket = MonthSum & {
     /** A director chose the amount, rather than repaying it all. */
     chosen: boolean
   } | null
+}
+
+export type SalaryStatus =
+  | { status: "paid"; on: string }
+  | { status: "part"; paid: string; expected: string }
+  | { status: "due" }
+
+/**
+ * Paid (with the day), part paid, or — for the current month only — not paid
+ * yet. Future months say nothing: their salaries are expected, not missing.
+ */
+export function salaryStatus(
+  result: Ready,
+  m: MonthBreakdown
+): SalaryStatus | null {
+  const expected = new D(result.salaryPerMonth)
+  const paid = new D(m.salariesPaid)
+  if (expected.lte(0)) return null
+  if (paid.gte(expected) && m.salariesPaidOn)
+    return { status: "paid", on: m.salariesPaidOn }
+  if (paid.gt(0))
+    return { status: "part", paid: m.salariesPaid, expected: money(expected) }
+  return m.month === monthStart(result.today) ? { status: "due" } : null
 }
 
 export type LeftInBank = {
@@ -422,6 +447,7 @@ export function overviewBuckets(
       opening: m.opening,
       takeHome: m.takeHomePerDirector,
       takeHomeNote: takeHomeNote(result, m.takeHomePerDirector, formatMoney),
+      salaries: salaryStatus(result, m),
       payout: money(new D(m.directorPay).abs()),
       closing: m.closing,
       holdBack: new D(m.holdBack).gt(0) ? m.holdBack : null,

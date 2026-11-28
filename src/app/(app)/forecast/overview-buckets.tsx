@@ -4,10 +4,12 @@ import Link from "next/link"
 import { ActionForm } from "@/components/action-form"
 import { Field } from "@/components/form-fields"
 import { Dot } from "@/components/split-bar"
+import { Badge } from "@/components/ui/badge"
 import type { InOutMonth, MonthSum, OverviewBucket } from "@/lib/forecast-views"
 import {
   formatBalance,
   formatDayName,
+  formatDayShort,
   formatMoney,
   formatMonth,
   formatMonthName,
@@ -221,6 +223,24 @@ function ReserveLoan({ bucket }: { bucket: OverviewBucket }) {
   )
 }
 
+function SalaryBadge({ status }: { status: OverviewBucket["salaries"] }) {
+  if (!status) return null
+  if (status.status === "paid")
+    return (
+      <Badge variant="secondary">
+        Salaries paid {formatDayShort(status.on)}
+      </Badge>
+    )
+  if (status.status === "part")
+    return (
+      <Badge variant="outline">
+        Salaries part paid ({formatMoney(status.paid)} of{" "}
+        {formatMoney(status.expected)})
+      </Badge>
+    )
+  return <Badge variant="outline">Salaries not paid yet</Badge>
+}
+
 /** One month: what came in, what went out, and what each director takes home. */
 export function OverviewBucketCard({ bucket }: { bucket: OverviewBucket }) {
   const headline = (
@@ -229,6 +249,9 @@ export function OverviewBucketCard({ bucket }: { bucket: OverviewBucket }) {
       <p className="text-xs text-foreground tabular-nums">
         {bucket.takeHomeNote}
       </p>
+      <div>
+        <SalaryBadge status={bucket.salaries} />
+      </div>
     </>
   )
   return (

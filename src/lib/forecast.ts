@@ -567,6 +567,10 @@ export type MonthBreakdown = {
   runningCosts: string
   adjustments: string
   directorPay: string
+  /** Director salaries already paid from the bank this month. */
+  salariesPaid: string
+  /** When the last of them went out, if any has. */
+  salariesPaidOn: string | null
   closing: string
   vatOwed: string
   holdBack: string
@@ -2445,6 +2449,8 @@ function monthRows(
   const runningCosts = total("running_cost")
   const adjustments = total("adjustment", "manual_balance")
   const directorPay = total("director_salary", "dividend", "director_payout")
+  const salaryEvents = inMonth.filter((e) => e.type === "director_salary")
+  const salariesPaid = total("director_salary").negated()
 
   const closing = opening
     .plus(invoicesLanding)
@@ -2476,6 +2482,8 @@ function monthRows(
     runningCosts: money(runningCosts),
     adjustments: money(adjustments),
     directorPay: money(directorPay),
+    salariesPaid: money(salariesPaid),
+    salariesPaidOn: salaryEvents.at(-1)?.date ?? null,
     closing: money(closing),
     vatOwed: money(prepared.vatOwedOn(end)),
     payout: money(payout),
