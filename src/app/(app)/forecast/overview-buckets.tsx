@@ -1,6 +1,8 @@
 import { ChevronRight } from "lucide-react"
 import Link from "next/link"
 
+import { ActionForm } from "@/components/action-form"
+import { Field } from "@/components/form-fields"
 import { Dot } from "@/components/split-bar"
 import type { InOutMonth, MonthSum, OverviewBucket } from "@/lib/forecast-views"
 import {
@@ -12,6 +14,7 @@ import {
   formatSigned,
 } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { clearReserveRepayment, saveReserveRepayment } from "./actions"
 
 const figure = "font-mono tabular-nums"
 
@@ -167,6 +170,56 @@ function Headline({ label, value }: { label: string; value: string }) {
   )
 }
 
+/** What's borrowed from the tax reserve, and how much of it this month repays. */
+function ReserveLoan({ bucket }: { bucket: OverviewBucket }) {
+  const loan = bucket.reserveLoan
+  if (!loan) return null
+  const id = `repay-${bucket.month}`
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-border p-2.5">
+      <Line
+        label="Borrowed from tax reserve"
+        value={formatMoney(loan.owedBefore)}
+      />
+      <p className="text-xs text-muted-foreground">
+        Repaying {formatMoney(loan.repaying)} on{" "}
+        {formatDayName(bucket.payoutDate)}
+        {loan.owedAfter !== "0.00" &&
+          `, leaving ${formatMoney(loan.owedAfter)} for next month`}
+        . What isn&apos;t repaid goes to take-home.
+      </p>
+      <div className="flex flex-wrap items-end gap-2">
+        <ActionForm
+          action={saveReserveRepayment}
+          submit="Save"
+          variant="outline"
+          className="flex-row flex-wrap items-end"
+        >
+          <input type="hidden" name="month" value={bucket.month} />
+          <Field
+            id={id}
+            name="amountGbp"
+            label="Repay this month (£)"
+            inputMode="decimal"
+            className="w-36"
+            defaultValue={loan.repaying}
+            required
+          />
+        </ActionForm>
+        {loan.chosen && (
+          <ActionForm
+            action={clearReserveRepayment}
+            submit="Repay it all"
+            variant="ghost"
+          >
+            <input type="hidden" name="month" value={bucket.month} />
+          </ActionForm>
+        )}
+      </div>
+    </div>
+  )
+}
+
 /** One month: what came in, what went out, and what each director takes home. */
 export function OverviewBucketCard({ bucket }: { bucket: OverviewBucket }) {
   const headline = (
@@ -203,6 +256,7 @@ export function OverviewBucketCard({ bucket }: { bucket: OverviewBucket }) {
           ))}
         </ul>
       )}
+      <ReserveLoan bucket={bucket} />
       <div className="border-t border-border pt-2">
         <Line
           label="Take-home between directors"

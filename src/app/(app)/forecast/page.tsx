@@ -159,9 +159,14 @@ function CurrentBalances({ data }: { data: Ready }) {
     />
   )
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
       {tile("Current account", data.xeroClosing)}
       {tile("Tax reserve", data.taxReserveBalance)}
+      <StatTile
+        label="Borrowed from reserve"
+        value={formatPence(data.result.reserveOwed)}
+        sub="Taken out and not paid back yet"
+      />
     </div>
   )
 }

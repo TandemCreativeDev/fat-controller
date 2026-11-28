@@ -16,6 +16,7 @@ import {
   holdBack,
   invoiceExpectation,
   person,
+  reserveRepayment,
   runningCostFixed,
   runningCostOneOff,
 } from "@/db/schema"
@@ -489,6 +490,48 @@ export async function clearHoldBack(
   await db.delete(holdBack).where(eq(holdBack.month, month))
   refresh()
   return { ok: true, message: "Back to the suggestion." }
+}
+
+// ------------------------------------------------------------------ reserve repayments
+
+const repaymentForm = z.object({
+  month: z.iso.date(),
+  amountGbp: moneyField.refine((v) => !v.startsWith("-"), {
+    message: "Enter an amount of zero or more",
+  }),
+})
+
+/** How much of what's borrowed from the tax reserve to repay in a month. */
+export async function saveReserveRepayment(
+  _prev: FormState,
+  data: FormData
+): Promise<FormState> {
+  const director = await requireDirector()
+  const parsed = repaymentForm.safeParse(form(data))
+  if (!parsed.success) return { ok: false, message: firstError(parsed.error) }
+  const { month, amountGbp } = parsed.data
+  await db
+    .insert(reserveRepayment)
+    .values({ month, amountGbp, createdBy: director.id })
+    .onConflictDoUpdate({
+      target: reserveRepayment.month,
+      set: { amountGbp, createdBy: director.id },
+    })
+  refresh()
+  revalidatePath("/corporation-tax")
+  return saved
+}
+
+export async function clearReserveRepayment(
+  _prev: FormState,
+  data: FormData
+): Promise<FormState> {
+  await requireDirector()
+  const month = z.iso.date().parse(data.get("month"))
+  await db.delete(reserveRepayment).where(eq(reserveRepayment.month, month))
+  refresh()
+  revalidatePath("/corporation-tax")
+  return { ok: true, message: "Back to repaying it all." }
 }
 
 // ------------------------------------------------------------------ bank balance
