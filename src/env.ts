@@ -7,6 +7,9 @@ const optional = <T extends z.ZodType>(schema: T) =>
 // Server-side environment, validated once at import. Never read process.env elsewhere.
 const schema = z.object({
   DATABASE_URL: z.url(),
+  // The MCP analyst's read-only role (fc_analyst). Required on Vercel; locally
+  // it falls back to the throwaway local role on DATABASE_URL's server.
+  ANALYST_DATABASE_URL: optional(z.url()),
   BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_URL: optional(z.url()),
   // Xero integration (M1). Optional so the app runs before Xero is set up;

@@ -15,10 +15,15 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "node --env-file-if-exists=.env.local --import tsx scripts/seed.ts",
-    "gates": "bash scripts/gates.sh"
+    "gates": "bash scripts/gates.sh",
+    "db:analyst:sql": "node --import tsx scripts/analyst-role-sql.ts",
+    "db:analyst": "node --env-file-if-exists=.env.local --import tsx scripts/analyst-role.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
+    "@better-auth/mcp": "1.7.7",
+    "@better-auth/oauth-provider": "1.7.7",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@vercel/functions": "^3.9.11",
     "better-auth": "^1.7.7",
     "class-variance-authority": "^0.7.1",
