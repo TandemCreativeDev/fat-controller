@@ -9,6 +9,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { authClient } from "@/lib/auth-client"
 
+function continueUrl(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null
+  const { redirect, url } = data as { redirect?: unknown; url?: unknown }
+  return redirect === true && typeof url === "string" ? url : null
+}
+
 export function SignInForm() {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
@@ -20,7 +26,7 @@ export function SignInForm() {
     setPending(true)
     setError(null)
     // Client-side call so the request goes through /api/auth and its rate limiter.
-    const { error } = await authClient.signIn.email({
+    const { data, error } = await authClient.signIn.email({
       email: String(form.get("email")),
       password: String(form.get("password")),
     })
@@ -31,6 +37,13 @@ export function SignInForm() {
           ? "Too many attempts. Wait a minute and try again."
           : "Wrong email or password."
       )
+      return
+    }
+    // Signing in part-way through connecting Claude: the server says where the
+    // OAuth flow continues (the consent page, or straight back to Claude).
+    const next = continueUrl(data)
+    if (next) {
+      window.location.href = next
       return
     }
     router.replace("/")

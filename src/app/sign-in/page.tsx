@@ -10,8 +10,15 @@ import {
 import { getDirector } from "@/lib/session"
 import { SignInForm } from "./sign-in-form"
 
-export default async function SignInPage() {
-  if (await getDirector()) redirect("/")
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  // Sent here part-way through connecting Claude: stay, so signing in carries
+  // the signed OAuth query on. Otherwise a signed-in director goes home.
+  const connecting = "sig" in (await searchParams)
+  if (!connecting && (await getDirector())) redirect("/")
 
   return (
     <main className="flex min-h-svh items-center justify-center p-6">
@@ -20,7 +27,11 @@ export default async function SignInPage() {
           <CardTitle className="text-gradient-accent font-heading text-2xl font-semibold tracking-[-0.03em]">
             fat-controller
           </CardTitle>
-          <CardDescription>Sign in with your director account.</CardDescription>
+          <CardDescription>
+            {connecting
+              ? "Sign in to connect Claude to Fat Controller."
+              : "Sign in with your director account."}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <SignInForm />
