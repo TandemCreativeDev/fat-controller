@@ -259,10 +259,9 @@ export type OverviewBucket = MonthSum & {
   /** The month's hold-back, editable while its payout day is still to come. */
   holdBackEdit: {
     amount: string
-    suggested: string
-    /** A director set it, rather than taking the suggestion. */
+    /** A director set it; otherwise the buffer applies. */
     chosen: boolean
-    reason: string
+    buffer: string
   } | null
   /** Money borrowed from the tax reserve, if any is owed going into payout day. */
   reserveLoan: {
@@ -281,27 +280,6 @@ export type LeftInBank = {
   reason: string
 }
 
-/** Why a hold-back is there, in words: when the money runs short, and what's behind it. */
-export function holdBackWhy(
-  m: MonthBreakdown,
-  formatMoney: (amount: string) => string
-): string {
-  const r = m.holdBackReason
-  const chosen =
-    m.holdBackSource === "director" ? " A director set this amount." : ""
-  if (!r) return chosen.trim()
-  const paying = r.bills
-    .map((b) => `${b.personName} ${formatMoney(b.amount)}`)
-    .join(", ")
-  const short = `By ${formatDayName(r.shortOn)} the account would be ${formatMoney(r.shortBy)} short${
-    paying ? `, after paying ${paying}` : ", from running costs and set-asides"
-  }.`
-  const next = r.nextInvoice
-    ? ` The next invoice, ${r.nextInvoice.name}, doesn't land until ${formatDayName(r.nextInvoice.landsOn)}.`
-    : " No invoice is forecast to land in time."
-  return `${short}${next}${chosen}`
-}
-
 function leftInBank(
   result: Ready,
   m: MonthBreakdown,
@@ -313,7 +291,7 @@ function leftInBank(
       key: "hold_back",
       label: "Held for next month",
       amount: m.holdBack,
-      reason: holdBackWhy(m, formatMoney),
+      reason: "A director set this; it replaces the buffer.",
     },
     {
       key: "set_asides",
@@ -327,10 +305,11 @@ function leftInBank(
       amount: m.vatOwedAtPayout,
       reason: "Owed to HMRC.",
     },
+    // A hold-back a director set is everything left: the buffer doesn't apply.
     {
       key: "buffer",
       label: "Buffer",
-      amount: result.buffer,
+      amount: m.holdBackSource === "director" ? "0.00" : result.buffer,
       reason: "Always left in the account.",
     },
   ]
@@ -455,9 +434,8 @@ export function overviewBuckets(
         m.payoutDate >= result.today
           ? {
               amount: m.holdBack,
-              suggested: m.suggestedHoldBack,
               chosen: m.holdBackSource === "director",
-              reason: holdBackWhy(m, formatMoney),
+              buffer: result.buffer,
             }
           : null,
       reserveLoan:

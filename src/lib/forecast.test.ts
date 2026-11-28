@@ -4,7 +4,6 @@ import {
   billBuckets,
   contractorColour,
   earlierMonths,
-  holdBackWhy,
   inOutMonths,
   mergeDay,
   overviewBuckets,
@@ -404,78 +403,42 @@ describe("hold-back and shortfall", () => {
     })
   }
 
-  it("suggests keeping back what next month's bills would need, and says why", () => {
+  it("keeps nothing back unless a director sets it, and shows the shortfall", () => {
     const june = run(tightInput()).months[0]
-    // Opening next month with just the buffer, the £3,000 bill would leave −£2,900.
-    expect(june.suggestedHoldBack).toBe("2900.00")
-    expect(june.holdBack).toBe("2900.00")
-    expect(june.holdBackSource).toBe("suggested")
-    expect(june.payout).toBe("2000.00")
-    expect(june.holdBackReason).toMatchObject({
-      shortOn: "2026-07-26",
-      shortBy: "2900.00",
-      bills: [{ personName: "Casey Contractor", amount: "3000.00" }],
-    })
-    expect(june.shortfall).toBe("0.00")
+    expect(june.holdBack).toBe("0.00")
+    expect(june.holdBackSource).toBe("none")
+    // 5,000 less the 100 buffer; next month's £3,000 bill would leave it short.
+    expect(june.payout).toBe("4900.00")
+    expect(june.shortfall).toBe("2900.00")
   })
 
-  it("explains everything the payout leaves in the bank", () => {
-    const r = run(tightInput())
-    const june = overviewBuckets(r, (v) => v)[0]
-    expect(june.leftInBank.map((x) => [x.key, x.amount])).toEqual([
-      ["hold_back", "2900.00"],
-      ["buffer", "100.00"],
-    ])
-    expect(june.closing).toBe("3000.00")
-    expect(june.leftInBank[0].reason).toContain(
-      "after paying Casey Contractor 3000.00"
+  it("treats a director's hold-back as everything left, in place of the buffer", () => {
+    const r = run(
+      tightInput({ holdBacks: [{ month: "2026-06-01", amountGbp: "3000.00" }] })
     )
-  })
-
-  it("says when the money runs short, why, and what lands too late", () => {
-    const base = run(tightInput()).months[0]
-    const reason = {
-      shortOn: "2026-07-29",
-      shortBy: "724.64",
-      bills: [
-        { personName: "Casey", amount: "873.81" },
-        { personName: "Sam", amount: "100.00" },
-      ],
-      nextInvoice: { name: "AAA-I4", landsOn: "2026-07-30" },
-    }
-    const why = (r: MonthBreakdown["holdBackReason"]) =>
-      holdBackWhy({ ...base, holdBackReason: r }, (v) => v)
-    expect(why(reason)).toBe(
-      "By Wed 29 Jul the account would be 724.64 short, after paying Casey 873.81, Sam 100.00. The next invoice, AAA-I4, doesn't land until Thu 30 Jul."
-    )
-    expect(why({ ...reason, bills: [] })).toContain(
-      "short, from running costs and set-asides."
-    )
-    expect(why({ ...reason, nextInvoice: null })).toContain(
-      "No invoice is forecast to land in time."
-    )
-  })
-
-  it("lets a director's choice replace the suggestion", () => {
-    const june = run(
-      tightInput({ holdBacks: [{ month: "2026-06-01", amountGbp: "500.00" }] })
-    ).months[0]
-    expect(june.holdBack).toBe("500.00")
+    const june = r.months[0]
+    expect(june.holdBack).toBe("3000.00")
     expect(june.holdBackSource).toBe("director")
-    expect(june.suggestedHoldBack).toBe("2900.00")
-    expect(june.payout).toBe("4400.00")
-    // The hold-back doesn't cover it, so the shortfall shows.
-    expect(june.shortfall).toBe("2400.00")
+    expect(june.payout).toBe("2000.00")
+    expect(june.closing).toBe("3000.00")
+    expect(june.shortfall).toBe("0.00")
+    const bucket = overviewBuckets(r, (v) => v)[0]
+    expect(bucket.leftInBank.map((x) => [x.key, x.amount])).toEqual([
+      ["hold_back", "3000.00"],
+    ])
+    expect(bucket.holdBackEdit).toEqual({
+      amount: "3000.00",
+      chosen: true,
+      buffer: "100.00",
+    })
   })
 
-  it("suggests a hold-back for the last displayed month", () => {
-    const input = tightInput()
-    input.settings = { ...input.settings, months: 1 }
-    const r = run(input)
-    expect(r.months.map((m) => m.month)).toEqual(["2026-06-01"])
-    expect(r.months[0].suggestedHoldBack).toBe("2900.00")
-    // The hidden month stays hidden.
-    expect(r.timeline.every((e) => e.date <= "2026-06-30")).toBe(true)
+  it("leaves nothing at all when a director sets the hold-back to zero", () => {
+    const june = run(
+      tightInput({ holdBacks: [{ month: "2026-06-01", amountGbp: "0.00" }] })
+    ).months[0]
+    expect(june.payout).toBe("5000.00")
+    expect(june.closing).toBe("0.00")
   })
 
   it("carries a month that ends short into the next", () => {
@@ -484,7 +447,6 @@ describe("hold-back and shortfall", () => {
         today: "2026-06-30",
         settings: { ...baseInput().settings, months: 2 },
         balance: { opening: "50.00", closing: "50.00" },
-        holdBacks: [{ month: "2026-06-01", amountGbp: "0.00" }],
       })
     )
     const [june, july] = r.months

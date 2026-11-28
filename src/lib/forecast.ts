@@ -570,17 +570,8 @@ export type MonthBreakdown = {
   closing: string
   vatOwed: string
   holdBack: string
-  holdBackSource: "suggested" | "director" | "none"
-  suggestedHoldBack: string
-  holdBackReason: {
-    /** The worst day next month, if nothing were held back. */
-    shortOn: string
-    shortBy: string
-    /** Bills paid next month up to that day, added up per person. */
-    bills: { personName: string; amount: string }[]
-    /** The first invoice to land after that day, if any is forecast. */
-    nextInvoice: { name: string; landsOn: string } | null
-  } | null
+  /** A director set the hold-back; otherwise it's nothing and the buffer applies. */
+  holdBackSource: "director" | "none"
   /** What's in the account straight after the payout. */
   afterPayout: string
   /** Set-asides and VAT still owed when the payout is worked out. */
@@ -1551,7 +1542,9 @@ function simulate(
   input: ForecastInput,
   prepared: Prepared,
   opening: Dec,
-  holdBacks: Map<string, Dec>
+  holdBacks: Map<string, Dec>,
+  /** Months whose hold-back a director set: it's everything left, so no buffer on top. */
+  chosenHoldBacks: ReadonlySet<string> = new Set()
 ): SimResult {
   const { today, settings } = input
   const holidays = new Set(input.holidays)
@@ -1628,7 +1621,7 @@ function simulate(
       const month = monthStart(date)
       const payout = D.max(
         balance
-          .minus(buffer)
+          .minus(chosenHoldBacks.has(month) ? ZERO : buffer)
           .minus(prepared.vatOwedOn(date))
           .minus(prepared.setAsideOwedOn(date))
           .minus(holdBacks.get(month) ?? ZERO),
@@ -1683,41 +1676,6 @@ function shortfallIn(
   }
   if (!worstDay) return { amount: ZERO, day: null }
   return { amount: worst, day: worstDay }
-}
-
-/** Bills paid between two days, in the order they went out, added up per person. */
-function billsPaidBetween(
-  sim: SimResult,
-  from: string,
-  to: string
-): { personName: string; amount: string }[] {
-  const byPerson = new Map<string, Dec>()
-  const paid = [...sim.paidOn.entries()]
-    .filter(([, on]) => on >= from && on <= to)
-    .sort((a, b) => a[1].localeCompare(b[1]))
-  for (const [bill] of paid)
-    byPerson.set(
-      bill.personName,
-      (byPerson.get(bill.personName) ?? ZERO).plus(bill.amount)
-    )
-  return [...byPerson.entries()].map(([personName, amount]) => ({
-    personName,
-    amount: money(amount),
-  }))
-}
-
-/** The first invoice to land after a day, with its name but not its label. */
-function nextInvoiceAfter(
-  sim: SimResult,
-  day: string | null
-): { name: string; landsOn: string } | null {
-  if (!day) return null
-  const hit = sim.events
-    .filter((e) => e.type === "expected_invoice" && e.date > day)
-    .sort((a, b) => a.date.localeCompare(b.date))[0]
-  return hit
-    ? { name: hit.label.replace(/^[^:]*: /, ""), landsOn: hit.date }
-    : null
 }
 
 /** A director's date wins, but money can't land in the past. */
@@ -2462,8 +2420,6 @@ function monthRows(
   MonthBreakdown,
   | "holdBack"
   | "holdBackSource"
-  | "suggestedHoldBack"
-  | "holdBackReason"
   | "afterPayout"
   | "setAsideOwedAtPayout"
   | "vatOwedAtPayout"
@@ -2616,40 +2572,22 @@ export function runForecast(input: ForecastInput): ForecastResult {
     input.holdBacks.map((h) => [h.month, new D(h.amountGbp)])
   )
 
-  // Hold-backs depend on earlier months, so settle them one month at a time.
-  const holdBacks = new Map<string, Dec>()
-  const suggestions = new Map<
-    string,
-    { amount: Dec; reason: MonthBreakdown["holdBackReason"] }
-  >()
-  for (const month of displayMonths) {
-    const trial = new Map(holdBacks)
-    trial.set(month, ZERO)
-    const sim = simulate(input, prepared, opening, trial)
-    const short = shortfallIn(prepared, sim, month)
-    const canHold = sim.payouts.has(month)
-    const amount = canHold ? penny(short.amount) : ZERO
-    suggestions.set(month, {
-      amount,
-      reason: short.day
-        ? {
-            shortOn: short.day,
-            shortBy: money(penny(short.amount)),
-            bills: billsPaidBetween(sim, addMonths(month, 1), short.day),
-            nextInvoice: nextInvoiceAfter(sim, short.day),
-          }
-        : null,
-    })
-    holdBacks.set(month, directorChoice.get(month) ?? amount)
-  }
-  const sim = simulate(input, prepared, opening, holdBacks)
+  // Hold-backs are only ever a director's choice: it's what's left in the
+  // account at take-home, in place of the buffer.
+  const holdBacks = directorChoice
+  const sim = simulate(
+    input,
+    prepared,
+    opening,
+    holdBacks,
+    new Set(directorChoice.keys())
+  )
 
   const months: MonthBreakdown[] = []
   let running = opening
   for (const month of displayMonths) {
     const rows = monthRows(input, prepared, sim, month, running)
     running = new D(rows.closing)
-    const suggestion = suggestions.get(month)!
     const chosen = directorChoice.has(month)
     const held = holdBacks.get(month) ?? ZERO
     const after = shortfallIn(prepared, sim, month)
@@ -2662,9 +2600,7 @@ export function runForecast(input: ForecastInput): ForecastResult {
       ),
       reserveRepayChosen: repay?.chosen ?? false,
       holdBack: money(held),
-      holdBackSource: chosen ? "director" : held.gt(0) ? "suggested" : "none",
-      suggestedHoldBack: money(suggestion.amount),
-      holdBackReason: suggestion.reason,
+      holdBackSource: chosen ? "director" : "none",
       afterPayout: money(
         (sim.endOfDay.get(rows.payoutDate) ?? ZERO).minus(
           sim.payouts.get(month) ?? ZERO

@@ -10,7 +10,6 @@ import {
 import { payoutBuckets } from "@/lib/forecast-buckets"
 import {
   billBuckets,
-  holdBackWhy,
   inOutMonths,
   overviewBuckets,
   timelineView,
@@ -76,7 +75,6 @@ const ROWS: [string, (m: MonthBreakdown) => string][] = [
   ["Closing balance", (m) => m.closing],
   ["VAT owed (not a cash movement)", (m) => m.vatOwed],
   ["Hold-back", (m) => m.holdBack],
-  ["Suggested hold-back", (m) => m.suggestedHoldBack],
   ["Shortfall next month after hold-back", (m) => m.shortfall],
   ["Take-home per director", (m) => m.takeHomePerDirector],
 ]
@@ -192,20 +190,14 @@ export function buildForecastPack(d: ForecastPackInput): string {
         .join("\n\n")
   )
 
-  const reasons = result.months.filter((m) => m.holdBackReason)
+  const held = result.months.filter((m) => m.holdBackSource === "director")
   out.push(
     "## Hold-backs\n\n" +
-      (reasons.length === 0
-        ? "None suggested."
+      (held.length === 0
+        ? "None set: each month leaves the buffer."
         : markdownTable(
-            ["Month", "Amount", "Set by", "Suggested", "Why"],
-            reasons.map((m) => [
-              m.month.slice(0, 7),
-              m.holdBack,
-              m.holdBackSource,
-              m.suggestedHoldBack,
-              holdBackWhy(m, plain),
-            ])
+            ["Month", "Left in the account (replaces the buffer)"],
+            held.map((m) => [m.month.slice(0, 7), m.holdBack])
           ))
   )
 
