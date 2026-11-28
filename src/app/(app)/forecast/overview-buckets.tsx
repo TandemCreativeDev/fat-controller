@@ -15,6 +15,7 @@ import {
 } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { clearReserveRepayment, saveReserveRepayment } from "./actions"
+import { HoldBackDialog } from "./hold-back-dialog"
 
 const figure = "font-mono tabular-nums"
 
@@ -248,13 +249,18 @@ export function OverviewBucketCard({ bucket }: { bucket: OverviewBucket }) {
       />
       {bucket.leftInBank.length > 0 && (
         <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
-          {bucket.leftInBank.map((r) => (
-            <li key={r.key}>
-              {r.label} {formatBalance(r.amount)}
-              {r.key === "hold_back" && r.reason && `: ${r.reason}`}
-            </li>
-          ))}
+          {bucket.leftInBank
+            .filter((r) => !(bucket.holdBackEdit && r.key === "hold_back"))
+            .map((r) => (
+              <li key={r.key}>
+                {r.label} {formatBalance(r.amount)}
+                {r.key === "hold_back" && r.reason && `: ${r.reason}`}
+              </li>
+            ))}
         </ul>
+      )}
+      {bucket.holdBackEdit && (
+        <HoldBackDialog month={bucket.month} {...bucket.holdBackEdit} />
       )}
       <ReserveLoan bucket={bucket} />
       <div className="border-t border-border pt-2">

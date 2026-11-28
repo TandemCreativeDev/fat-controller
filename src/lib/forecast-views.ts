@@ -256,6 +256,14 @@ export type OverviewBucket = MonthSum & {
   shortfall: string | null
   taxReserve: string | null
   vatOwed: string | null
+  /** The month's hold-back, editable while its payout day is still to come. */
+  holdBackEdit: {
+    amount: string
+    suggested: string
+    /** A director set it, rather than taking the suggestion. */
+    chosen: boolean
+    reason: string
+  } | null
   /** Money borrowed from the tax reserve, if any is owed going into payout day. */
   reserveLoan: {
     owedBefore: string
@@ -443,6 +451,15 @@ export function overviewBuckets(
       shortfall: new D(m.shortfall).gt(0) ? m.shortfall : null,
       taxReserve: result.taxReserveBalance,
       vatOwed: new D(m.vatOwed).isZero() ? null : m.vatOwed,
+      holdBackEdit:
+        m.payoutDate >= result.today
+          ? {
+              amount: m.holdBack,
+              suggested: m.suggestedHoldBack,
+              chosen: m.holdBackSource === "director",
+              reason: holdBackWhy(m, formatMoney),
+            }
+          : null,
       reserveLoan:
         new D(m.reserveOwedBefore).gt(0) && m.payoutDate >= result.today
           ? {
