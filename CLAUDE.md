@@ -32,3 +32,4 @@ pnpm gates          # typecheck, lint, test, build → PASS or FAIL: <step> (nee
 - Never edit a pushed migration; keep migrations backward-compatible with the deploy still serving.
 - Read env through `src/env.ts`; build auth URLs from `baseUrl`, never `env.BETTER_AUTH_URL`.
 - Money is `numeric(14,2)` GBP; never do money arithmetic in floats in components.
+- The MCP analyst (`/api/mcp`) moves with the app: a new page, forecast field, Forecast page field or setting must be mapped in `src/lib/mcp/coverage.ts` (to a tool, or hidden with a reason), and a new table must be decided in `src/lib/mcp/access.ts` and explained in `src/lib/mcp/glossary.ts`. The typecheck and `tests/mcp-parity.test.ts` enforce it.
