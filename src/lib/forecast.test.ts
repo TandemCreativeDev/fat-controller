@@ -201,6 +201,7 @@ function baseInput(overrides: Partial<ForecastInput> = {}): ForecastInput {
       { date: "2026-06-10", label: "One-off payment", amountGbp: "-500.00" },
     ],
     holdBacks: [],
+    reserveRepayments: [],
     balance: { opening: "1000.00", closing: "1000.00" },
     manualBalance: null,
     taxReserveBalance: "5000.00",
@@ -1294,6 +1295,88 @@ describe("set-asides", () => {
     )
     expect(r.months[0].payout).toBe("0.00")
     expect(r.months[0].closing).toBe("100.00")
+  })
+
+  const twoMonths = {
+    ...noWork,
+    settings: { ...baseInput().settings, months: 2 },
+    cash: [back("2026-06-01", "500.00")],
+    balance: { opening: "1000.00", closing: "1500.00" },
+  }
+  const repays = (r: ReturnType<typeof run>) =>
+    r.timeline
+      .filter((e) => e.type === "reserve_repayment")
+      .map((e) => [e.date, e.amount])
+
+  it("repays it all in the month by default and reports what's owed", () => {
+    const r = run(baseInput(twoMonths))
+    expect(r.reserveOwed).toBe("500.00")
+    expect(r.months[0]).toMatchObject({
+      reserveOwedBefore: "500.00",
+      reserveOwedAfter: "0.00",
+      reserveRepayChosen: false,
+    })
+    expect(r.months[1].reserveOwedBefore).toBe("0.00")
+    expect(repays(r)).toEqual([["2026-06-30", "-500.00"]])
+  })
+
+  it("puts off a repayment a director chose not to make, into the payout", () => {
+    const r = run(
+      baseInput({
+        ...twoMonths,
+        reserveRepayments: [{ month: "2026-06-01", amountGbp: "0.00" }],
+      })
+    )
+    expect(r.months[0]).toMatchObject({
+      reserveRepaid: "0.00",
+      reserveOwedAfter: "500.00",
+      reserveRepayChosen: true,
+      payout: "1400.00",
+    })
+    // Still owed, so July repays it unless told otherwise.
+    expect(r.months[1].reserveOwedBefore).toBe("500.00")
+    expect(repays(r)).toEqual([["2026-07-31", "-500.00"]])
+  })
+
+  it("repays part, carrying the rest to the next month", () => {
+    const r = run(
+      baseInput({
+        ...twoMonths,
+        reserveRepayments: [{ month: "2026-06-01", amountGbp: "200.00" }],
+      })
+    )
+    expect(r.months[0].reserveOwedAfter).toBe("300.00")
+    expect(repays(r)).toEqual([
+      ["2026-06-30", "-200.00"],
+      ["2026-07-31", "-300.00"],
+    ])
+  })
+
+  it("counts transfers against set-asides on money landed before the loan", () => {
+    const paid: CashLine = {
+      ...raw({
+        sourceId: "p",
+        source: "payment",
+        direction: "in",
+        date: "2026-05-15",
+        amount: "1000.00",
+      }),
+      kind: "client_payment",
+      personId: null,
+    }
+    const transfer: CashLine = {
+      ...raw({ sourceId: "t", date: "2026-05-20", amount: "300.00" }),
+      kind: "set_aside",
+      personId: null,
+    }
+    // 200 set aside on the payment comes first; the other 100 repays the loan.
+    const r = run(
+      baseInput({
+        ...noWork,
+        cash: [paid, back("2026-05-10", "500.00"), transfer],
+      })
+    )
+    expect(r.reserveOwed).toBe("400.00")
   })
 })
 

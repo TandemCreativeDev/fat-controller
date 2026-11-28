@@ -556,6 +556,12 @@ export type MonthBreakdown = {
   setAsides: string
   /** The part of setAsides that repays money taken from the tax reserve. */
   reserveRepaid: string
+  /** Borrowed from the tax reserve going into payout day. */
+  reserveOwedBefore: string
+  /** Still borrowed after this month's repayment. */
+  reserveOwedAfter: string
+  /** A director chose this month's repayment, rather than repaying it all. */
+  reserveRepayChosen: boolean
   vatPayments: string
   otherTransfersOut: string
   runningCosts: string
@@ -624,6 +630,8 @@ export type ForecastInput = {
   bills: StoredBill[]
   adjustments: { date: string; label: string; amountGbp: string }[]
   holdBacks: { month: string; amountGbp: string }[]
+  /** How much of what's borrowed from the tax reserve to repay, by month. */
+  reserveRepayments: { month: string; amountGbp: string }[]
   /** Xero's balance on the operating account(s): the 1st of this month, and today. */
   balance: { opening: string; closing: string } | null
   /** A director's real balance for today, if entered. */
@@ -689,6 +697,8 @@ export type ForecastResult =
       /** Left in the main account each month. */
       buffer: string
       taxReserveBalance: string | null
+      /** Borrowed from the tax reserve and not paid back yet. */
+      reserveOwed: string
       directorCount: number
       /** Salaries a month, all directors together. */
       salaryPerMonth: string
@@ -1491,9 +1501,21 @@ type Prepared = {
   /** Set-aside owed but not yet transferred, as of a given day. */
   setAsideOwedOn: (date: string) => Dec
   vatOwedOn: (date: string) => Dec
+  /** Borrowed from the tax reserve and not paid back, as of today. */
+  reserveOwed: Dec
+  /** Each month's repayment of what's borrowed from the reserve. */
+  reserveRepayments: Map<string, ReserveRepaymentPlan>
   firstDay: string
   lastDay: string
   displayEnd: string
+}
+
+type ReserveRepaymentPlan = {
+  /** Still borrowed going into the month's payout day. */
+  owedBefore: Dec
+  amount: Dec
+  /** A director set the amount, rather than repaying it all. */
+  chosen: boolean
 }
 
 type SimResult = {
@@ -1796,20 +1818,10 @@ function prepare(
     amount: Dec
     label: string
     projectId: string | null
-    repayment?: boolean
+    /** Owed on money that has already landed, rather than money expected. */
+    landed: boolean
   }
   const owed: Owed[] = []
-  // Money taken back from the tax reserve is still owed to it. It goes back on
-  // the month's payout day, so it comes out of the payout rather than the bills.
-  for (const l of cash)
-    if (l.kind === "backstop_in" && l.date >= settings.startDate)
-      owed.push({
-        date: l.date,
-        amount: new D(l.amount),
-        label: "Repay tax reserve",
-        projectId: null,
-        repayment: true,
-      })
   const vatItems: { date: string; amount: Dec }[] = []
   const registeredFrom = settings.vatRegisteredFrom
 
@@ -1825,6 +1837,7 @@ function prepare(
       amount: share,
       label: inv?.invoiceNumber ?? "client payment",
       projectId: inv?.projectId ?? null,
+      landed: true,
     })
     if (registeredFrom && l.date >= registeredFrom && inv && !total.isZero())
       vatItems.push({
@@ -1868,6 +1881,7 @@ function prepare(
         : penny(outstanding.div(total).times(inv.setAside)),
       label: name,
       projectId: inv.projectId,
+      landed: false,
     })
     if (registeredFrom && landing >= registeredFrom && !total.isZero())
       vatItems.push({
@@ -1876,31 +1890,80 @@ function prepare(
       })
   }
 
-  // -------- set-asides: actual transfers settle what's owed, oldest first
+  // -------- set-asides and money borrowed from the reserve
+  // Transfers to the reserve settle set-asides on money that has landed first,
+  // then what was borrowed from the reserve, then set-asides on money expected.
   let credit = sum(
     cash
       .filter((l) => l.kind === "set_aside" && l.date >= settings.startDate)
       .map((l) => new D(l.amount))
   )
   const scheduled: { owedOn: string; moveOn: string; amount: Dec }[] = []
-  for (const o of owed.sort((a, b) => a.date.localeCompare(b.date))) {
-    const settled = D.min(credit, o.amount)
-    credit = credit.minus(settled)
-    const remaining = o.amount.minus(settled)
-    if (remaining.lte(0)) continue
-    // A set-aside moves the moment the money lands; a repayment waits for payout day.
-    const landed = o.date > today ? o.date : today
-    const moveOn = o.repayment
-      ? lastWorkingDay(landed, new Set(input.holidays))
-      : landed
-    scheduled.push({ owedOn: o.date, moveOn, amount: remaining })
-    if (moveOn <= lastDay)
+  const settle = (list: Owed[]) => {
+    for (const o of list.sort((a, b) => a.date.localeCompare(b.date))) {
+      const settled = D.min(credit, o.amount)
+      credit = credit.minus(settled)
+      const remaining = o.amount.minus(settled)
+      if (remaining.lte(0)) continue
+      // A set-aside moves the moment the money lands.
+      const moveOn = o.date > today ? o.date : today
+      scheduled.push({ owedOn: o.date, moveOn, amount: remaining })
+      if (moveOn <= lastDay)
+        events.push({
+          date: moveOn,
+          amount: remaining.negated(),
+          type: "set_aside",
+          label: `Set-aside: ${o.label}`,
+          projectId: o.projectId,
+          personId: null,
+          source: "forecast",
+          actual: false,
+        })
+    }
+  }
+  settle(owed.filter((o) => o.landed))
+  const borrowed = sum(
+    cash
+      .filter((l) => l.kind === "backstop_in" && l.date >= settings.startDate)
+      .map((l) => new D(l.amount))
+  )
+  const repaidSoFar = D.min(credit, borrowed)
+  credit = credit.minus(repaidSoFar)
+  const reserveOwed = borrowed.minus(repaidSoFar)
+  settle(owed.filter((o) => !o.landed))
+
+  // What's borrowed goes back on payout day, out of the payout rather than the
+  // bills. All of it, unless a director chose to repay less in a month.
+  const holidays = new Set(input.holidays)
+  const repayChoice = new Map(
+    input.reserveRepayments.map((r) => [r.month, new D(r.amountGbp)])
+  )
+  const reserveRepayments = new Map<string, ReserveRepaymentPlan>()
+  let stillOwed = reserveOwed
+  for (let month = firstDay; month <= lastDay; month = addMonths(month, 1)) {
+    const payoutOn = lastWorkingDay(month, holidays)
+    const chosen = repayChoice.get(month)
+    // Once this month's payout day has gone, its repayment waits for next month.
+    const amount =
+      payoutOn < today
+        ? ZERO
+        : penny(D.max(D.min(chosen ?? stillOwed, stillOwed), ZERO))
+    reserveRepayments.set(month, {
+      owedBefore: stillOwed,
+      amount,
+      chosen: chosen !== undefined,
+    })
+    stillOwed = stillOwed.minus(amount)
+    if (amount.lte(0)) continue
+    const owedOn = month > today ? month : today
+    scheduled.push({ owedOn, moveOn: payoutOn, amount })
+    if (payoutOn <= lastDay)
       events.push({
-        date: moveOn,
-        amount: remaining.negated(),
-        type: o.repayment ? "reserve_repayment" : "set_aside",
-        label: o.repayment ? o.label : `Set-aside: ${o.label}`,
-        projectId: o.projectId,
+        date: payoutOn,
+        amount: amount.negated(),
+        type: "reserve_repayment",
+        label: "Repay tax reserve",
+        projectId: null,
         personId: null,
         source: "forecast",
         actual: false,
@@ -2034,6 +2097,8 @@ function prepare(
       ),
     vatOwedOn: (date) =>
       sum(vatItems.filter((v) => v.date <= date).map((v) => v.amount)),
+    reserveOwed,
+    reserveRepayments,
     firstDay,
     lastDay,
     displayEnd,
@@ -2363,6 +2428,9 @@ function monthRows(
   | "setAsideOwedAtPayout"
   | "vatOwedAtPayout"
   | "shortfall"
+  | "reserveOwedBefore"
+  | "reserveOwedAfter"
+  | "reserveRepayChosen"
 > {
   const end = monthEnd(month)
   const inMonth = sim.events.filter((e) => e.date >= month && e.date <= end)
@@ -2545,8 +2613,14 @@ export function runForecast(input: ForecastInput): ForecastResult {
     const chosen = directorChoice.has(month)
     const held = holdBacks.get(month) ?? ZERO
     const after = shortfallIn(prepared, sim, month)
+    const repay = prepared.reserveRepayments.get(month)
     months.push({
       ...rows,
+      reserveOwedBefore: money(repay?.owedBefore ?? ZERO),
+      reserveOwedAfter: money(
+        (repay?.owedBefore ?? ZERO).minus(repay?.amount ?? ZERO)
+      ),
+      reserveRepayChosen: repay?.chosen ?? false,
       holdBack: money(held),
       holdBackSource: chosen ? "director" : held.gt(0) ? "suggested" : "none",
       suggestedHoldBack: money(suggestion.amount),
@@ -2594,6 +2668,7 @@ export function runForecast(input: ForecastInput): ForecastResult {
     runningCosts: runningCostTally(input, months),
     buffer: money(settings.bufferGbp),
     taxReserveBalance: input.taxReserveBalance,
+    reserveOwed: money(prepared.reserveOwed),
     directorCount: directorCount(input),
     salaryPerMonth: money(
       new D(settings.directorSalaryGbp).times(

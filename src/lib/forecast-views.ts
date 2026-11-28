@@ -256,6 +256,14 @@ export type OverviewBucket = MonthSum & {
   shortfall: string | null
   taxReserve: string | null
   vatOwed: string | null
+  /** Money borrowed from the tax reserve, if any is owed going into payout day. */
+  reserveLoan: {
+    owedBefore: string
+    repaying: string
+    owedAfter: string
+    /** A director chose the amount, rather than repaying it all. */
+    chosen: boolean
+  } | null
 }
 
 export type LeftInBank = {
@@ -435,6 +443,15 @@ export function overviewBuckets(
       shortfall: new D(m.shortfall).gt(0) ? m.shortfall : null,
       taxReserve: result.taxReserveBalance,
       vatOwed: new D(m.vatOwed).isZero() ? null : m.vatOwed,
+      reserveLoan:
+        new D(m.reserveOwedBefore).gt(0) && m.payoutDate >= result.today
+          ? {
+              owedBefore: m.reserveOwedBefore,
+              repaying: money(new D(m.reserveRepaid).abs()),
+              owedAfter: m.reserveOwedAfter,
+              chosen: m.reserveRepayChosen,
+            }
+          : null,
     }
   })
 }

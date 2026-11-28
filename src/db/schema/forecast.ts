@@ -256,6 +256,14 @@ export const holdBack = pgTable("hold_back", {
   createdBy: createdBy(),
 })
 
+/** How much of what's borrowed from the tax reserve a director chose to repay in a month. */
+export const reserveRepayment = pgTable("reserve_repayment", {
+  /** First day of the month. */
+  month: date("month").primaryKey(),
+  amountGbp: money("amount_gbp").notNull(),
+  createdBy: createdBy(),
+})
+
 export const cashAdjustment = pgTable("cash_adjustment", {
   id: uuid("id").primaryKey().defaultRandom(),
   date: date("date").notNull(),

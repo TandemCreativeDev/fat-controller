@@ -13,6 +13,7 @@ import {
   forecastOverride,
   forecastSnapshot,
   holdBack,
+  reserveRepayment,
   invoiceExpectation,
   payRate,
   person,
@@ -298,6 +299,7 @@ export async function loadForecastInput(
     bills,
     adjustments,
     holdBacks,
+    repayments,
     expectations,
     customInvoices,
     contacts,
@@ -329,6 +331,7 @@ export async function loadForecastInput(
     db.select().from(contractorBill),
     db.select().from(cashAdjustment),
     db.select().from(holdBack),
+    db.select().from(reserveRepayment),
     db.select().from(invoiceExpectation),
     db.select().from(customInvoice),
     db
@@ -458,6 +461,10 @@ export async function loadForecastInput(
       month: h.month,
       amountGbp: h.amountGbp,
     })),
+    reserveRepayments: repayments.map((r) => ({
+      month: r.month,
+      amountGbp: r.amountGbp,
+    })),
     balance:
       operatingRows.length > 0
         ? {
@@ -513,6 +520,8 @@ export type ForecastPageData = {
   xeroClosing: string | null
   /** Xero's balance on the tax-reserve account(s), from the latest sync. */
   taxReserveBalance: string | null
+  /** Borrowed from the tax reserve and not paid back yet. */
+  reserveOwed: string | null
   /** London date of the last completed Xero sync. */
   lastXeroSync: string | null
   operatingAccountId: string | null
@@ -674,6 +683,7 @@ export async function getForecastPage(): Promise<ForecastPageData> {
     xeroClosing: input?.balance?.closing ?? null,
     taxReserveBalance: input?.taxReserveBalance ?? null,
     lastXeroSync: input?.lastXeroSync ?? null,
+    reserveOwed: result && !result.blocked ? result.reserveOwed : null,
     operatingAccountId: accountsWith(settings, "operating")[0] ?? null,
     people,
     adjustments,

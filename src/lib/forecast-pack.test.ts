@@ -71,6 +71,7 @@ const input: ForecastInput = {
   bills: [],
   adjustments: [],
   holdBacks: [],
+  reserveRepayments: [],
   balance: { opening: "1000.00", closing: "1000.00" },
   manualBalance: null,
   taxReserveBalance: "5000.00",
