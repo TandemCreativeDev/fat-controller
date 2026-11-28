@@ -7,35 +7,32 @@ import { useState } from "react"
 import { ActionForm } from "@/components/action-form"
 import { Field } from "@/components/form-fields"
 import { Button } from "@/components/ui/button"
-import { formatMoney, formatMonthName } from "@/lib/format"
+import { formatBalance, formatMoney, formatMonthName } from "@/lib/format"
 import { clearHoldBack, saveHoldBack } from "./actions"
 
-/** "Held for next month": click to choose the amount instead of the suggestion. */
+/**
+ * The month's hold-back, in the "left in the bank" breakdown: click to set what
+ * stays in the account at take-home. A set amount replaces the buffer.
+ */
 export function HoldBackDialog({
   month,
   amount,
-  suggested,
   chosen,
-  reason,
+  buffer,
 }: {
   month: string
   amount: string
-  suggested: string
   chosen: boolean
-  reason: string
+  buffer: string
 }) {
   const [open, setOpen] = useState(false)
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger className="flex w-full items-baseline justify-between gap-3 rounded-md text-left text-sm hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
-        <span className="text-muted-foreground">
-          Held for next month{" "}
-          <span className="text-xs">
-            ({chosen ? "your amount" : "suggested"})
-          </span>
-          <Pencil aria-hidden className="ml-1 inline size-3" />
-        </span>
-        <span className="font-mono tabular-nums">{formatMoney(amount)}</span>
+      <Dialog.Trigger className="inline-flex items-center gap-1 rounded-sm text-left underline decoration-dotted underline-offset-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+        {chosen
+          ? `Held for next month ${formatBalance(amount)}, instead of the buffer`
+          : "Hold back more for next month"}
+        <Pencil aria-hidden className="size-3" />
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/60" />
@@ -53,9 +50,9 @@ export function HoldBackDialog({
             />
           </div>
           <Dialog.Description className="text-sm text-muted-foreground">
-            Kept in the account at take-home so next month&apos;s bills can be
-            paid. It comes out of this month&apos;s take-home, on top of the
-            buffer. Suggested: {formatMoney(suggested)}.{reason && ` ${reason}`}
+            How much to leave in the account at take-home, so next month&apos;s
+            bills can be paid. It replaces the {formatMoney(buffer)} buffer for
+            this month, and comes out of this month&apos;s take-home.
           </Dialog.Description>
           <ActionForm
             action={saveHoldBack}
@@ -66,17 +63,17 @@ export function HoldBackDialog({
             <Field
               id={`hold-back-${month}`}
               name="amountGbp"
-              label="Hold back (£)"
+              label="Leave in the account (£)"
               inputMode="decimal"
               className="w-40"
-              defaultValue={amount}
+              defaultValue={chosen ? amount : buffer}
               required
             />
           </ActionForm>
           {chosen && (
             <ActionForm
               action={clearHoldBack}
-              submit="Use the suggestion"
+              submit={`Use the ${formatMoney(buffer)} buffer`}
               variant="ghost"
             >
               <input type="hidden" name="month" value={month} />

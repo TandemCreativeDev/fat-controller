@@ -247,20 +247,21 @@ export function OverviewBucketCard({ bucket }: { bucket: OverviewBucket }) {
         label="Left in the bank after take-home"
         value={formatSigned(String(-Number(bucket.closing)))}
       />
-      {bucket.leftInBank.length > 0 && (
+      {(bucket.leftInBank.length > 0 || bucket.holdBackEdit) && (
         <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
           {bucket.leftInBank
             .filter((r) => !(bucket.holdBackEdit && r.key === "hold_back"))
             .map((r) => (
               <li key={r.key}>
                 {r.label} {formatBalance(r.amount)}
-                {r.key === "hold_back" && r.reason && `: ${r.reason}`}
               </li>
             ))}
+          {bucket.holdBackEdit && (
+            <li>
+              <HoldBackDialog month={bucket.month} {...bucket.holdBackEdit} />
+            </li>
+          )}
         </ul>
-      )}
-      {bucket.holdBackEdit && (
-        <HoldBackDialog month={bucket.month} {...bucket.holdBackEdit} />
       )}
       <ReserveLoan bucket={bucket} />
       <div className="border-t border-border pt-2">

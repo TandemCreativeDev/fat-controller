@@ -490,7 +490,7 @@ export async function clearHoldBack(
   const month = z.iso.date().parse(data.get("month"))
   await db.delete(holdBack).where(eq(holdBack.month, month))
   refresh()
-  return { ok: true, message: "Back to the suggestion." }
+  return { ok: true, message: "Back to the buffer." }
 }
 
 // ------------------------------------------------------------------ reserve repayments
