@@ -41,7 +41,8 @@ export const DICTIONARY = `# Fat Controller data dictionary
 - v_sales_document, v_forecast_sales_invoice: sales invoices and credit notes, as the forecast sees them.
 - bank_balance: daily balances per bank account (source xero, or manual when a director typed one in).
 - person, pay_rate, project, project_solidtime, solidtime_*: who works on what, at what rate, and their tracked time.
-- contractor_bill: contractor bills (entered or matched to bank payments).
+- contractor_bill: contractor bills (entered or matched to bank payments). contractor_payment_exclusion: contractor payments a director unmatched from a bill, so automatic matching skips them.
+- bank_holiday: England and Wales bank holidays, for working days and payout day.
 - forecast_override, invoice_expectation, custom_invoice, hold_back, reserve_repayment, cash_adjustment, running_cost_fixed, running_cost_one_off: directors' adjustments to the forecast.
 - forecast_snapshot: what the forecast said each day, for accuracy tracking.
 - account_group: how Xero accounts group into P&L lines.

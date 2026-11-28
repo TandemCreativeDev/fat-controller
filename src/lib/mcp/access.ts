@@ -93,25 +93,6 @@ export const SENSITIVE: readonly string[] = [
 
 export const DENIED_ALL: readonly string[] = Object.values(DENIED).flat()
 
-/** Settings get_settings may return. Anything else stays hidden. */
-export const SAFE_SETTINGS = [
-  "financial_year_start",
-  "ct_set_aside_rate",
-  "hours_per_day",
-  "invoice_day_rounding",
-  "forecast_lookback_days",
-  "forecast_months",
-  "operating_buffer_gbp",
-  "forecast_start_date",
-  "director_monthly_salary_gbp",
-  "bank_account_roles",
-  "vat_liability_account_id",
-  "vat_registered_from",
-  "vat_rate",
-  "ct_associated_companies",
-  "ct_paid_years",
-] as const
-
 const ident = (name: string) => `"${name.replace(/"/g, '""')}"`
 
 /** The role's privileges: idempotent, no password. Run after CREATE ROLE. */

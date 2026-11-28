@@ -16,7 +16,14 @@ import { getPeriod } from "@/lib/period-store"
 import { getCostsByAccount, getPnlMonthly } from "@/lib/pnl-store"
 import { getSettings } from "@/lib/settings-store"
 import { getStaffPay } from "@/lib/staff-store"
-import { ALLOWED, SAFE_SETTINGS } from "./access"
+import { ALLOWED } from "./access"
+import {
+  FORECAST_FIELDS,
+  FORECAST_SECTIONS,
+  SETTINGS,
+  isHidden,
+  type ToolName,
+} from "./coverage"
 import { DICTIONARY, INSTRUCTIONS } from "./glossary"
 import {
   DEFAULT_ROWS,
@@ -61,17 +68,6 @@ const sqlArgs = {
     .describe("Values for $1, $2…"),
 }
 
-const SECTIONS = [
-  "months",
-  "timeline",
-  "expected_money",
-  "bills",
-  "running_costs",
-  "accuracy",
-  "reserve_loan",
-  "warnings",
-] as const
-
 /** Every tool is read-only. Each call is logged; errors go back to the model as text. */
 export function createServer(caller: Caller): McpServer {
   const server = new McpServer(
@@ -80,7 +76,7 @@ export function createServer(caller: Caller): McpServer {
   )
 
   const tool = <S extends z.ZodRawShape>(
-    name: string,
+    name: ToolName,
     description: string,
     inputSchema: S,
     handler: (
@@ -306,9 +302,11 @@ export function createServer(caller: Caller): McpServer {
 
   tool(
     "get_forecast",
-    `The cash and take-home forecast, as on the Forecast page. Choose sections: months (money in and out, take-home each, hold-backs, buffer, reserve repayments, shortfalls), timeline (day-by-day balance and events; use from/to), expected_money (invoices expected to land), bills (contractor bills and expected pay dates), running_costs, accuracy (forecast vs actual per invoice), reserve_loan (borrowed from the tax reserve and planned repayments), warnings. Defaults to months and warnings.`,
+    `The cash and take-home forecast, as on the Forecast page. Choose sections: months (money in and out, take-home each, hold-backs, buffer, reserve repayments, shortfalls), timeline (day-by-day balance and events; use from/to), invoices (every invoice, raised and forecast, with days and contractor cost), expected_money (invoices expected to land), bills (contractor bills, expected pay dates, and payments not yet matched to a bill), running_costs, accuracy (forecast vs actual per invoice), reserve_loan (withdrawals from the tax reserve, corrections and planned repayments), history (earlier months from the bank, and client payments), warnings. Defaults to months and warnings.`,
     {
-      sections: z.array(z.enum(SECTIONS)).default(["months", "warnings"]),
+      sections: z
+        .array(z.enum(FORECAST_SECTIONS))
+        .default(["months", "warnings"]),
       from: z.iso.date().optional().describe("Timeline start, YYYY-MM-DD"),
       to: z.iso.date().optional().describe("Timeline end, YYYY-MM-DD"),
     },
@@ -320,35 +318,29 @@ export function createServer(caller: Caller): McpServer {
         throw new ToolError(
           `The forecast can't run: set a default pay rate for ${r.missingDefaultRate.join(", ")}.`
         )
-      const want = new Set(sections)
-      const out: Record<string, unknown> = { today: r.today, buffer: r.buffer }
-      if (want.has("months")) out.months = r.months
+      const want = new Set<string>(sections)
+      // Every field the forecast produces, by the section coverage.ts gives it.
+      const out: Record<string, unknown> = {}
+      for (const [field, section] of Object.entries(FORECAST_FIELDS))
+        if (section === "always" || want.has(section))
+          out[field] = r[field as keyof typeof FORECAST_FIELDS]
       if (want.has("timeline"))
         out.timeline = r.timeline.filter(
           (e) => (!from || e.date >= from) && (!to || e.date <= to)
         )
-      if (want.has("expected_money")) out.expectedMoney = r.expectedMoney
-      if (want.has("bills")) out.bills = r.bills
-      if (want.has("running_costs"))
-        out.runningCosts = {
-          monthlyAverage: r.runningCostAverage,
-          ...r.runningCosts,
-        }
-      if (want.has("accuracy")) out.accuracy = page.accuracy
-      if (want.has("reserve_loan"))
-        out.reserveLoan = {
-          owedNow: r.reserveOwed,
-          withdrawals: r.reserveWithdrawals,
-          byMonth: r.months.map((m) => ({
-            month: m.month,
-            payoutDate: m.payoutDate,
-            owedBefore: m.reserveOwedBefore,
-            repaying: m.reserveRepaid,
-            owedAfter: m.reserveOwedAfter,
-            directorChose: m.reserveRepayChosen,
-          })),
-        }
+      // The page's own extras, by the same sections.
       if (want.has("warnings")) out.warnings = page.warnings
+      if (want.has("accuracy")) out.accuracy = page.accuracy
+      if (want.has("bills")) out.unlinkedPayments = page.unlinkedPayments
+      if (want.has("reserve_loan"))
+        out.reserveRepaymentsByMonth = r.months.map((m) => ({
+          month: m.month,
+          payoutDate: m.payoutDate,
+          owedBefore: m.reserveOwedBefore,
+          repaying: m.reserveRepaid,
+          owedAfter: m.reserveOwedAfter,
+          directorChose: m.reserveRepayChosen,
+        }))
       return json(out, PACK_BYTES)
     }
   )
@@ -384,7 +376,13 @@ export function createServer(caller: Caller): McpServer {
     {},
     async () => {
       const s = await getSettings()
-      return json(Object.fromEntries(SAFE_SETTINGS.map((k) => [k, s[k]])))
+      return json(
+        Object.fromEntries(
+          Object.entries(SETTINGS)
+            .filter(([, shown]) => !isHidden(shown))
+            .map(([k]) => [k, s[k as keyof typeof s]])
+        )
+      )
     }
   )
 
