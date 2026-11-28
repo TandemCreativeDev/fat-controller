@@ -19,9 +19,10 @@ export const DICTIONARY = `# Fat Controller data dictionary
 - Directors: the two owners. They take a small monthly salary plus dividends ("take-home").
 - Operating account vs tax reserve: bank accounts are tagged in settings (bank_account_roles). The operating account is the main current account; the tax reserve is a savings account where money for Corporation Tax is kept.
 - Set-aside: the share of each paid invoice's margin (after contractor costs) that should move to the tax reserve. The rate is ct_set_aside_rate (the "20% rule").
-- Borrowed from the reserve (reserve loan): money moved from the tax reserve back to the operating account. Money moved into the reserve first settles set-asides owed on invoices already paid; anything beyond that pays back the loan. Directors can choose to repay less in a month (reserve_repayment), and the rest rolls on.
-- Buffer: operating_buffer_gbp, always left in the operating account after month-end take-home.
-- Hold-back: extra kept in the account at month end so next month's contractor bills can be paid (hold_back, or suggested by the forecast).
+- Borrowed from the reserve (reserve loan): money moved from the tax reserve back to the operating account. Money moved into the reserve first settles set-asides owed on invoices already paid; anything beyond that pays back the loan. By default it's all repaid on the month's payout day; directors can choose to repay less in a month (reserve_repayment), and the rest rolls on.
+- Correction: a withdrawal from the reserve a director marked as undoing a transfer in (a mistake put straight back, or too much moved across), in reserve_correction. It isn't borrowing: it's left out of the loan and cancels that much of the transfers in.
+- Buffer: operating_buffer_gbp, left in the operating account after month-end take-home.
+- Hold-back: only ever set by a director (hold_back), for one month. It's everything left in the account at take-home, in place of the buffer. The forecast never holds back by itself; it reports a shortfall when next month's bills would run the account short.
 - Payout day: the last working day of the month, when take-home (dividends) is paid.
 - Forecast: projects each project's invoices from tracked hours (Solidtime) and pay rates, contractor bills, running costs, set-asides and VAT, day by day, to work out take-home.
 - Corporation Tax (CT): estimated per financial year from the ledger, with marginal relief; ct_paid_years lists years already paid.
