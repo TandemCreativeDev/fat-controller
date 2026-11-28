@@ -511,6 +511,10 @@ export type ForecastPageData = {
   ctPaidYears: string[]
   manualBalance: string | null
   xeroClosing: string | null
+  /** Xero's balance on the tax-reserve account(s), from the latest sync. */
+  taxReserveBalance: string | null
+  /** London date of the last completed Xero sync. */
+  lastXeroSync: string | null
   operatingAccountId: string | null
   people: { id: string; name: string; billTermsDays: number; kind: string }[]
   adjustments: {
@@ -668,6 +672,8 @@ export async function getForecastPage(): Promise<ForecastPageData> {
     ctPaidYears: settings.ct_paid_years,
     manualBalance: input?.manualBalance ?? null,
     xeroClosing: input?.balance?.closing ?? null,
+    taxReserveBalance: input?.taxReserveBalance ?? null,
+    lastXeroSync: input?.lastXeroSync ?? null,
     operatingAccountId: accountsWith(settings, "operating")[0] ?? null,
     people,
     adjustments,

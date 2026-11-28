@@ -146,6 +146,26 @@ function Warnings({ warnings }: { warnings: ForecastPageData["warnings"] }) {
   )
 }
 
+/** Today's balances as Xero last reported them. */
+function CurrentBalances({ data }: { data: Ready }) {
+  const synced = data.lastXeroSync
+    ? `From Xero, synced ${formatDay(data.lastXeroSync)}`
+    : "From Xero"
+  const tile = (label: string, amount: string | null) => (
+    <StatTile
+      label={label}
+      value={amount === null ? "None" : formatPence(amount)}
+      sub={amount === null ? "No balance from Xero yet" : synced}
+    />
+  )
+  return (
+    <div className="grid grid-cols-2 gap-4">
+      {tile("Current account", data.xeroClosing)}
+      {tile("Tax reserve", data.taxReserveBalance)}
+    </div>
+  )
+}
+
 function BalanceCard({
   result,
   className,
@@ -514,6 +534,7 @@ export default async function ForecastPage({
       <div className="flex flex-col gap-4 md:gap-8">
         {header}
         <Warnings warnings={data.warnings} />
+        {tab === "overview" && <CurrentBalances data={data} />}
         {(tab === "overview" || tab === "money-in" || tab === "bills") && (
           <MonthSwitcher />
         )}
