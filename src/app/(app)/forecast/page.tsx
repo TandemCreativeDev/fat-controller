@@ -47,7 +47,12 @@ import {
   formatPercent,
 } from "@/lib/format"
 import { requireDirector } from "@/lib/session"
-import { clearManualBalance, saveManualBalance } from "./actions"
+import { cn } from "@/lib/utils"
+import {
+  clearManualBalance,
+  saveManualBalance,
+  setReserveCorrection,
+} from "./actions"
 import { BillsBuckets } from "./bills-buckets"
 import { AdjustmentsTable } from "./cash-tables"
 import { EarlierMonthCard, OverviewBucketCard } from "./overview-buckets"
@@ -146,6 +151,80 @@ function Warnings({ warnings }: { warnings: ForecastPageData["warnings"] }) {
   )
 }
 
+/** What's borrowed from the reserve, opening to each withdrawal so a correction can be marked. */
+function BorrowedTile({ result }: { result: Ready["result"] }) {
+  const withdrawals = [...result.reserveWithdrawals].reverse()
+  return (
+    <Card size="sm" className="px-5 py-4 max-md:col-span-2">
+      <details className="group">
+        <summary className="flex cursor-pointer list-none flex-col gap-1 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+          <span className="text-xs font-semibold tracking-[0.08em] text-muted-foreground uppercase">
+            Borrowed from reserve
+          </span>
+          <span className="font-heading text-2xl font-semibold tracking-[-0.03em] tabular-nums">
+            {formatPence(result.reserveOwed)}
+          </span>
+          <span className="text-sm text-muted-foreground">
+            Taken out and not paid back yet ·{" "}
+            <span className="underline group-open:hidden">
+              {withdrawals.length} withdrawals
+            </span>
+            <span className="hidden underline group-open:inline">Hide</span>
+          </span>
+        </summary>
+        <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+          <p className="text-xs text-muted-foreground">
+            Mark a withdrawal as a correction if it undid a transfer in, such as
+            a mistake put straight back. It then doesn&apos;t count as borrowed.
+          </p>
+          {withdrawals.length === 0 && (
+            <p className="text-sm text-muted-foreground">No withdrawals.</p>
+          )}
+          <ul className="flex flex-col divide-y divide-border">
+            {withdrawals.map((w) => (
+              <li
+                key={w.sourceId}
+                className="flex flex-wrap items-center justify-between gap-2 py-2"
+              >
+                <div className="min-w-0 text-sm">
+                  <span className="tabular-nums">{formatDay(w.date)}</span>{" "}
+                  <span
+                    className={cn(
+                      "font-mono tabular-nums",
+                      w.correction && "text-muted-foreground line-through"
+                    )}
+                  >
+                    {formatPence(w.amount)}
+                  </span>
+                  {w.description && (
+                    <span className="block text-xs text-muted-foreground">
+                      {w.description}
+                    </span>
+                  )}
+                </div>
+                <ActionForm
+                  action={setReserveCorrection}
+                  submit={
+                    w.correction ? "Correction ✓ (undo)" : "Mark as correction"
+                  }
+                  variant={w.correction ? "ghost" : "outline"}
+                >
+                  <input type="hidden" name="sourceId" value={w.sourceId} />
+                  <input
+                    type="hidden"
+                    name="correction"
+                    value={w.correction ? "false" : "true"}
+                  />
+                </ActionForm>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </details>
+    </Card>
+  )
+}
+
 /** Today's balances as Xero last reported them. */
 function CurrentBalances({ data }: { data: Ready }) {
   const synced = data.lastXeroSync
@@ -162,11 +241,7 @@ function CurrentBalances({ data }: { data: Ready }) {
     <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
       {tile("Current account", data.xeroClosing)}
       {tile("Tax reserve", data.taxReserveBalance)}
-      <StatTile
-        label="Borrowed from reserve"
-        value={formatPence(data.result.reserveOwed)}
-        sub="Taken out and not paid back yet"
-      />
+      <BorrowedTile result={data.result} />
     </div>
   )
 }

@@ -16,6 +16,7 @@ import {
   holdBack,
   invoiceExpectation,
   person,
+  reserveCorrection,
   reserveRepayment,
   runningCostFixed,
   runningCostOneOff,
@@ -532,6 +533,34 @@ export async function clearReserveRepayment(
   refresh()
   revalidatePath("/corporation-tax")
   return { ok: true, message: "Back to repaying it all." }
+}
+
+const correctionForm = z.object({
+  sourceId: z.string().min(1).max(200),
+  correction: z.enum(["true", "false"]),
+})
+
+/** Mark a withdrawal from the reserve as a correction (not borrowing), or back. */
+export async function setReserveCorrection(
+  _prev: FormState,
+  data: FormData
+): Promise<FormState> {
+  const director = await requireDirector()
+  const parsed = correctionForm.safeParse(form(data))
+  if (!parsed.success) return { ok: false, message: firstError(parsed.error) }
+  const { sourceId, correction } = parsed.data
+  if (correction === "true")
+    await db
+      .insert(reserveCorrection)
+      .values({ sourceId, createdBy: director.id })
+      .onConflictDoNothing()
+  else
+    await db
+      .delete(reserveCorrection)
+      .where(eq(reserveCorrection.sourceId, sourceId))
+  refresh()
+  revalidatePath("/corporation-tax")
+  return saved
 }
 
 // ------------------------------------------------------------------ bank balance

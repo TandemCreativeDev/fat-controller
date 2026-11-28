@@ -338,6 +338,7 @@ export function createServer(caller: Caller): McpServer {
       if (want.has("reserve_loan"))
         out.reserveLoan = {
           owedNow: r.reserveOwed,
+          withdrawals: r.reserveWithdrawals,
           byMonth: r.months.map((m) => ({
             month: m.month,
             payoutDate: m.payoutDate,
